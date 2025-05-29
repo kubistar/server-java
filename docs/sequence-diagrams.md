@@ -5,6 +5,19 @@
 콘서트 예약 서비스의 주요 API 플로우를 시각화한 시퀀스 다이어그램입니다.
 각 다이어그램은 사용자와 시스템 간의 상호작용을 시간 순서대로 보여줍니다.
 
+# 시퀀스 다이어그램 분류 요약
+
+## 🔒 대기열 필요 API
+- **4. 좌석 예약 요청** - 한정된 자원에 대한 경쟁
+- **5. 잔액 충전** - 중요한 금전 거래
+- **7. 결제 처리** - 실제 거래 발생
+
+## 🔓 일반 API (토큰 불필요)
+- **1. 대기열 토큰 발급** - 대기열 진입용
+- **2. 대기열 상태 조회** - 대기열 관리용
+- **3. 콘서트 정보 조회** - 단순 정보 확인
+- **6. 잔액 조회** - 상태 확인
+
 ---
 
 ## 🎫 1. 대기열 토큰 발급 플로우
@@ -80,25 +93,21 @@ sequenceDiagram
 
 ---
 
-## 🎵 3. 콘서트 정보 조회 플로우
+## 🎵 3. 콘서트 정보 조회 플로우 🔓 (일반 API)
 
-예약 가능한 날짜와 좌석 정보를 조회하는 과정
+예약 가능한 날짜와 좌석 정보를 조회하는 과정 (대기열 토큰 불필요)
 
 ```mermaid
 sequenceDiagram
     participant User as 사용자
     participant API as API Gateway
-    participant Auth as 인증 미들웨어
     participant Concert as 콘서트 서비스
     participant Cache as 캐시 (Redis)
     participant DB as 데이터베이스
 
     %% 예약 가능 날짜 조회
     User->>API: GET /api/concerts/available-dates
-    Note over User,API: Headers: Authorization: Bearer {token}
-    
-    API->>Auth: 토큰 검증 (대기열 통과 확인)
-    Auth-->>API: 검증 완료 (활성 상태)
+    Note over User,API: 일반 API - 토큰 불필요
     
     API->>Concert: 예약 가능 날짜 조회
     Concert->>Cache: 캐시된 날짜 정보 확인
@@ -116,8 +125,7 @@ sequenceDiagram
 
     %% 좌석 정보 조회
     User->>API: GET /api/concerts/{concertId}/seats
-    API->>Auth: 토큰 검증
-    Auth-->>API: 검증 완료
+    Note over User,API: 일반 API - 토큰 불필요
     
     API->>Concert: 좌석 정보 조회
     Concert->>DB: 좌석 상태 실시간 조회
@@ -129,9 +137,9 @@ sequenceDiagram
 
 ---
 
-## 🪑 4. 좌석 예약 요청 플로우
+## 🪑 4. 좌석 예약 요청 플로우 🔒 (대기열 필요)
 
-사용자가 좌석을 선택하고 임시 배정을 받는 과정
+사용자가 좌석을 선택하고 임시 배정을 받는 과정 (대기열 토큰 필요)
 
 ```mermaid
 sequenceDiagram
@@ -192,9 +200,9 @@ sequenceDiagram
 
 ---
 
-## 💰 5. 잔액 충전 플로우
+## 💰 5. 잔액 충전 플로우 🔒 (대기열 필요)
 
-사용자가 결제를 위해 잔액을 충전하는 과정
+사용자가 결제를 위해 잔액을 충전하는 과정 (대기열 토큰 필요)
 
 ```mermaid
 sequenceDiagram
@@ -240,23 +248,20 @@ sequenceDiagram
 
 ---
 
-## 💰 6. 잔액 조회 플로우
+## 💰 6. 잔액 조회 플로우 🔓 (일반 API)
 
-사용자가 현재 잔액을 확인하는 과정
+사용자가 현재 잔액을 확인하는 과정 (대기열 토큰 불필요)
 
 ```mermaid
 sequenceDiagram
     participant User as 사용자
     participant API as API Gateway
-    participant Auth as 인증 미들웨어
     participant Balance as 잔액 서비스
     participant Cache as 캐시 (Redis)
     participant DB as 데이터베이스
 
     User->>API: GET /api/users/{userId}/balance
-    
-    API->>Auth: 토큰 검증
-    Auth-->>API: 검증 완료
+    Note over User,API: 일반 API - 토큰 불필요
     
     API->>Balance: 잔액 조회 요청
     
@@ -282,9 +287,9 @@ sequenceDiagram
 
 ---
 
-## 💳 7. 결제 처리 플로우
+## 💳 7. 결제 처리 플로우 🔒 (대기열 필요)
 
-임시 배정된 좌석에 대해 결제를 완료하는 과정
+임시 배정된 좌석에 대해 결제를 완료하는 과정 (대기열 토큰 필요)
 
 ```mermaid
 sequenceDiagram
@@ -299,58 +304,58 @@ sequenceDiagram
 
     User->>API: POST /api/payments
     Note over User,API: {"reservationId": "res-123"}
-    
+
     API->>Auth: 토큰 검증
     Auth-->>API: 검증 완료
-    
+
     API->>Payment: 결제 요청
-    
+
     Payment->>DB: 트랜잭션 시작
-    
-    %% 1. 예약 정보 확인
+
+%% 1. 예약 정보 확인
     Payment->>Reservation: 예약 상태 확인
     Reservation->>DB: 예약 정보 조회 (FOR UPDATE)
     DB-->>Reservation: 예약 정보 반환
-    
+
     alt 유효한 임시 배정
         Note over Reservation: - 임시 배정 상태 확인<br/>- 만료 시간 확인<br/>- 사용자 일치 확인
-        
-        %% 2. 잔액 확인 및 차감
+
+    %% 2. 잔액 확인 및 차감
         Payment->>Balance: 잔액 확인 및 차감
         Balance->>DB: 사용자 잔액 조회 (FOR UPDATE)
         DB-->>Balance: 현재 잔액 반환
-        
+
         alt 잔액 충분
             Balance->>DB: 잔액 차감
             Note over Balance,DB: balance = balance - seat_price
-            
+
             Balance->>DB: 결제 이력 저장
             DB-->>Balance: 차감 완료
-            
-            %% 3. 좌석 확정 배정
+
+        %% 3. 좌석 확정 배정
             Payment->>Reservation: 좌석 확정 처리
             Reservation->>DB: 좌석 상태 업데이트
             Note over Reservation,DB: status: RESERVED<br/>confirmed_at: now<br/>payment_id: pay-123
-            
-            %% 4. 토큰 만료 처리
+
+        %% 4. 토큰 만료 처리
             Payment->>Queue: 토큰 만료 처리
             Queue->>DB: 토큰 상태 업데이트
-            
+
             Payment->>DB: 트랜잭션 커밋
             DB-->>Payment: 결제 완료
-            
+
             Payment-->>API: 결제 성공
             API-->>User: {"paymentId": "pay-123", "seatNumber": 15, "amount": 50000, "status": "CONFIRMED"}
-            
+
         else 잔액 부족
             Payment->>DB: 트랜잭션 롤백
             Payment-->>API: 400 Bad Request
             API-->>User: {"error": "잔액이 부족합니다", "currentBalance": 30000, "requiredAmount": 50000}
         end
-        
+
     else 유효하지 않은 예약
         Note over Payment: - 만료된 임시 배정<br/>- 이미 결제 완료<br/>- 권한 없음
-        
+
         Payment->>DB: 트랜잭션 롤백
         Payment-->>API: 400 Bad Request
         API-->>User: {"error": "유효하지 않은 예약입니다"}
@@ -372,30 +377,30 @@ sequenceDiagram
 
     loop 30초마다 실행
         Scheduler->>Reservation: 만료된 임시 배정 확인
-        
+
         Reservation->>DB: 만료된 예약 조회
         Note over Reservation,DB: WHERE status = 'TEMPORARILY_ASSIGNED'<br/>AND assigned_until < NOW()
-        
+
         DB-->>Reservation: 만료된 예약 목록 반환
-        
+
         alt 만료된 예약이 있는 경우
             loop 각 만료된 예약에 대해
                 Reservation->>DB: 트랜잭션 시작
-                
+
                 Reservation->>DB: 좌석 상태 초기화
                 Note over Reservation,DB: status: AVAILABLE<br/>assigned_user_id: NULL<br/>assigned_until: NULL
-                
+
                 Reservation->>DB: 해제 이력 저장
                 Note over Reservation,DB: action: AUTO_RELEASE<br/>reason: EXPIRED<br/>timestamp: now
-                
+
                 Reservation->>DB: 트랜잭션 커밋
-                
+
                 Reservation->>Log: 해제 로그 기록
                 Log-->>Reservation: 로그 저장 완료
             end
-            
+
             Reservation-->>Scheduler: 해제 완료 (처리된 개수 반환)
-            
+
         else 만료된 예약이 없는 경우
             Reservation-->>Scheduler: 처리할 예약 없음
         end
@@ -417,37 +422,37 @@ sequenceDiagram
     participant DB as 데이터베이스
 
     Note over UserA,UserB: 두 사용자가 동시에 같은 좌석(15번) 예약 시도
-    
+
     par 동시 요청
         UserA->>API: POST /api/reservations (seat: 15)
     and
         UserB->>API: POST /api/reservations (seat: 15)
     end
-    
+
     par 락 획득 경쟁
         API->>Lock: 사용자 A - 좌석 15번 락 요청
     and
         API->>Lock: 사용자 B - 좌석 15번 락 요청
     end
-    
+
     Lock-->>API: 사용자 A - 락 획득 성공 ✅
     Lock-->>API: 사용자 B - 락 획득 실패 ❌
-    
-    %% 사용자 A의 성공 플로우
+
+%% 사용자 A의 성공 플로우
     API->>DB: 사용자 A - 좌석 상태 확인
     DB-->>API: 좌석 예약 가능
-    
+
     API->>DB: 사용자 A - 임시 배정 처리
     DB-->>API: 배정 완료
-    
+
     API->>Lock: 사용자 A - 락 해제
     Lock-->>API: 해제 완료
-    
+
     API-->>UserA: 예약 성공 🎉
-    
-    %% 사용자 B의 실패 플로우
+
+%% 사용자 B의 실패 플로우
     API-->>UserB: 409 Conflict - 다른 사용자가 처리 중 ⏳
-    
+
     Note over UserA,UserB: 결과: 사용자 A는 성공, 사용자 B는 재시도 필요
 ```
 
