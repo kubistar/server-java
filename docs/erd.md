@@ -17,19 +17,19 @@ erDiagram
     USERS ||--o{ RESERVATIONS : makes
     USERS ||--o{ PAYMENTS : pays
     USERS ||--o{ BALANCE_TRANSACTIONS : has
-    
+
     CONCERTS ||--o{ SEATS : contains
     SEATS ||--o{ RESERVATIONS : reserves
-    
+
     RESERVATIONS ||--|| PAYMENTS : confirmed_by
-    
+
     USERS {
         varchar user_id PK
         decimal balance
         timestamp created_at
         timestamp updated_at
     }
-    
+
     CONCERTS {
         bigint concert_id PK
         varchar title
@@ -40,7 +40,7 @@ erDiagram
         int total_seats
         timestamp created_at
     }
-    
+
     SEATS {
         bigint seat_id PK
         bigint concert_id FK
@@ -51,7 +51,7 @@ erDiagram
         timestamp assigned_until
         timestamp reserved_at
     }
-    
+
     RESERVATIONS {
         varchar reservation_id PK
         varchar user_id FK
@@ -63,7 +63,7 @@ erDiagram
         timestamp expires_at
         timestamp confirmed_at
     }
-    
+
     PAYMENTS {
         varchar payment_id PK
         varchar reservation_id FK
@@ -73,7 +73,7 @@ erDiagram
         enum payment_method
         timestamp created_at
     }
-    
+
     BALANCE_TRANSACTIONS {
         varchar transaction_id PK
         varchar user_id FK
@@ -103,13 +103,13 @@ erDiagram
 #### DDL
 ```sql
 CREATE TABLE users (
-    user_id VARCHAR(50) PRIMARY KEY,
-    balance DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '사용자 잔액',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    CONSTRAINT chk_balance CHECK (balance >= 0)
-) COMMENT '사용자 정보';
+                       user_id VARCHAR(50) PRIMARY KEY COMMENT '사용자 고유 식별자',
+                       balance DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '사용자 현재 잔액 (원 단위)',
+                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '계정 생성일시',
+                       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '정보 마지막 수정일시',
+
+                       CONSTRAINT chk_balance CHECK (balance >= 0)
+) COMMENT '사용자 기본 정보 테이블';
 ```
 
 #### 인덱스
@@ -137,18 +137,18 @@ CREATE INDEX idx_users_created_at ON users(created_at);
 #### DDL
 ```sql
 CREATE TABLE concerts (
-    concert_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    concert_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '콘서트 고유 식별자',
     title VARCHAR(200) NOT NULL COMMENT '콘서트 제목',
-    artist VARCHAR(100) NOT NULL COMMENT '아티스트명',
-    venue VARCHAR(200) NOT NULL COMMENT '공연장',
+    artist VARCHAR(100) NOT NULL COMMENT '출연 아티스트명',
+    venue VARCHAR(200) NOT NULL COMMENT '공연장 이름',
     concert_date DATE NOT NULL COMMENT '공연 날짜',
-    concert_time TIME NOT NULL COMMENT '공연 시간',
-    total_seats INT NOT NULL DEFAULT 50 COMMENT '총 좌석 수',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    concert_time TIME NOT NULL COMMENT '공연 시작 시간',
+    total_seats INT NOT NULL DEFAULT 50 COMMENT '전체 좌석 수 (기본 50석)',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '콘서트 등록일시',
     
     CONSTRAINT chk_total_seats CHECK (total_seats > 0),
     CONSTRAINT chk_concert_date CHECK (concert_date >= CURDATE())
-) COMMENT '콘서트 정보';
+) COMMENT '콘서트 기본 정보 테이블';
 ```
 
 #### 인덱스
@@ -182,15 +182,15 @@ CREATE INDEX idx_concerts_artist ON concerts(artist);
 #### DDL
 ```sql
 CREATE TABLE seats (
-    seat_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    concert_id BIGINT NOT NULL,
-    seat_number INT NOT NULL,
-    price DECIMAL(10,2) NOT NULL,
+    seat_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '좌석 고유 식별자',
+    concert_id BIGINT NOT NULL COMMENT '콘서트 식별자 (외래키)',
+    seat_number INT NOT NULL COMMENT '좌석 번호 (1-50)',
+    price DECIMAL(10,2) NOT NULL COMMENT '좌석 가격 (원 단위)',
     status ENUM('AVAILABLE', 'TEMPORARILY_ASSIGNED', 'RESERVED') 
-           NOT NULL DEFAULT 'AVAILABLE',
-    assigned_user_id VARCHAR(50) NULL,
-    assigned_until TIMESTAMP NULL,
-    reserved_at TIMESTAMP NULL,
+           NOT NULL DEFAULT 'AVAILABLE' COMMENT '좌석 예약 상태',
+    assigned_user_id VARCHAR(50) NULL COMMENT '임시 배정된 사용자 ID',
+    assigned_until TIMESTAMP NULL COMMENT '임시 배정 만료 시간 (5분 후)',
+    reserved_at TIMESTAMP NULL COMMENT '좌석 확정 예약 완료 시간',
     
     FOREIGN KEY (concert_id) REFERENCES concerts(concert_id),
     FOREIGN KEY (assigned_user_id) REFERENCES users(user_id),
@@ -198,7 +198,7 @@ CREATE TABLE seats (
     UNIQUE KEY uk_concert_seat (concert_id, seat_number),
     CONSTRAINT chk_seat_number CHECK (seat_number BETWEEN 1 AND 50),
     CONSTRAINT chk_price CHECK (price > 0)
-) COMMENT '좌석 정보';
+) COMMENT '콘서트별 좌석 정보 및 예약 상태 테이블';
 ```
 
 #### 인덱스
@@ -235,16 +235,16 @@ CREATE INDEX idx_seats_assigned_user ON seats(assigned_user_id);
 #### DDL
 ```sql
 CREATE TABLE reservations (
-    reservation_id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(50) NOT NULL,
-    concert_id BIGINT NOT NULL,
-    seat_id BIGINT NOT NULL,
+    reservation_id VARCHAR(36) PRIMARY KEY COMMENT '예약 고유 식별자 (UUID)',
+    user_id VARCHAR(50) NOT NULL COMMENT '예약자 사용자 ID',
+    concert_id BIGINT NOT NULL COMMENT '예약 대상 콘서트 ID',
+    seat_id BIGINT NOT NULL COMMENT '예약 대상 좌석 ID',
     status ENUM('TEMPORARILY_ASSIGNED', 'CONFIRMED', 'CANCELLED', 'EXPIRED') 
-           NOT NULL DEFAULT 'TEMPORARILY_ASSIGNED',
-    price DECIMAL(10,2) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL,
-    confirmed_at TIMESTAMP NULL,
+           NOT NULL DEFAULT 'TEMPORARILY_ASSIGNED' COMMENT '예약 진행 상태',
+    price DECIMAL(10,2) NOT NULL COMMENT '예약 시점의 좌석 가격',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '예약 요청 일시',
+    expires_at TIMESTAMP NOT NULL COMMENT '임시 배정 만료 일시 (생성+5분)',
+    confirmed_at TIMESTAMP NULL COMMENT '결제 완료로 예약 확정된 일시',
     
     FOREIGN KEY (user_id) REFERENCES users(user_id),
     FOREIGN KEY (concert_id) REFERENCES concerts(concert_id),
@@ -252,7 +252,7 @@ CREATE TABLE reservations (
     
     CONSTRAINT chk_price CHECK (price > 0),
     CONSTRAINT chk_expires_at CHECK (expires_at > created_at)
-) COMMENT '예약 정보';
+) COMMENT '좌석 예약 정보 및 상태 관리 테이블';
 ```
 
 #### 인덱스
@@ -290,19 +290,19 @@ CREATE INDEX idx_reservations_created_at ON reservations(created_at);
 #### DDL
 ```sql
 CREATE TABLE payments (
-    payment_id VARCHAR(36) PRIMARY KEY,
-    reservation_id VARCHAR(36) NOT NULL,
-    user_id VARCHAR(50) NOT NULL,
-    amount DECIMAL(10,2) NOT NULL,
-    status ENUM('COMPLETED', 'FAILED', 'CANCELLED') NOT NULL DEFAULT 'COMPLETED',
-    payment_method ENUM('BALANCE') NOT NULL DEFAULT 'BALANCE',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    payment_id VARCHAR(36) PRIMARY KEY COMMENT '결제 고유 식별자 (UUID)',
+    reservation_id VARCHAR(36) NOT NULL COMMENT '결제 대상 예약 ID',
+    user_id VARCHAR(50) NOT NULL COMMENT '결제자 사용자 ID',
+    amount DECIMAL(10,2) NOT NULL COMMENT '실제 결제된 금액 (원 단위)',
+    status ENUM('COMPLETED', 'FAILED', 'CANCELLED') NOT NULL DEFAULT 'COMPLETED' COMMENT '결제 처리 상태',
+    payment_method ENUM('BALANCE') NOT NULL DEFAULT 'BALANCE' COMMENT '결제 수단 (현재는 잔액만 지원)',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '결제 처리 완료 일시',
     
     FOREIGN KEY (reservation_id) REFERENCES reservations(reservation_id),
     FOREIGN KEY (user_id) REFERENCES users(user_id),
     
     CONSTRAINT chk_amount CHECK (amount > 0)
-) COMMENT '결제 정보';
+) COMMENT '결제 정보 및 처리 결과 테이블';
 ```
 
 #### 인덱스
@@ -336,18 +336,18 @@ CREATE INDEX idx_payments_created_at ON payments(created_at);
 #### DDL
 ```sql
 CREATE TABLE balance_transactions (
-    transaction_id VARCHAR(36) PRIMARY KEY,
-    user_id VARCHAR(50) NOT NULL,
-    transaction_type ENUM('CHARGE', 'PAYMENT', 'REFUND') NOT NULL,
-    amount DECIMAL(15,2) NOT NULL,
-    balance_after DECIMAL(15,2) NOT NULL,
-    description VARCHAR(500) NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (user_id) REFERENCES users(user_id),
-    
-    CONSTRAINT chk_balance_after CHECK (balance_after >= 0)
-) COMMENT '잔액 거래 내역';
+                                      transaction_id VARCHAR(36) PRIMARY KEY COMMENT '거래 고유 식별자 (UUID)',
+                                      user_id VARCHAR(50) NOT NULL COMMENT '거래 대상 사용자 ID',
+                                      transaction_type ENUM('CHARGE', 'PAYMENT', 'REFUND') NOT NULL COMMENT '거래 유형 (충전/결제/환불)',
+                                      amount DECIMAL(15,2) NOT NULL COMMENT '거래 금액 (원 단위, 양수)',
+                                      balance_after DECIMAL(15,2) NOT NULL COMMENT '거래 완료 후 사용자 잔액',
+                                      description VARCHAR(500) NULL COMMENT '거래 상세 설명 (선택사항)',
+                                      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '거래 발생 일시',
+
+                                      FOREIGN KEY (user_id) REFERENCES users(user_id),
+
+                                      CONSTRAINT chk_balance_after CHECK (balance_after >= 0)
+) COMMENT '사용자 잔액 변동 내역 및 거래 로그 테이블';
 ```
 
 #### 인덱스
@@ -490,12 +490,12 @@ CREATE INDEX idx_seats_concert_status_price ON seats(concert_id, status, price);
 #### 시간 기반 파티셔닝 (대용량 서비스 시)
 ```sql
 -- balance_transactions 테이블 월별 파티셔닝
-ALTER TABLE balance_transactions 
-PARTITION BY RANGE (YEAR(created_at) * 100 + MONTH(created_at)) (
+ALTER TABLE balance_transactions
+    PARTITION BY RANGE (YEAR(created_at) * 100 + MONTH(created_at)) (
     PARTITION p202501 VALUES LESS THAN (202502),
     PARTITION p202502 VALUES LESS THAN (202503),
     -- ...
-);
+    );
 ```
 
 ### 3. Redis 최적화
@@ -548,12 +548,12 @@ EXEC
 CREATE EVENT auto_release_expired_seats
 ON SCHEDULE EVERY 30 SECOND
 DO
-    UPDATE seats 
-    SET status = 'AVAILABLE', 
-        assigned_user_id = NULL, 
-        assigned_until = NULL
-    WHERE status = 'TEMPORARILY_ASSIGNED' 
-      AND assigned_until < NOW();
+UPDATE seats
+SET status = 'AVAILABLE',
+    assigned_user_id = NULL,
+    assigned_until = NULL
+WHERE status = 'TEMPORARILY_ASSIGNED'
+  AND assigned_until < NOW();
 ```
 
 #### Redis TTL
