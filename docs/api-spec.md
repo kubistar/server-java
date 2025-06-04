@@ -2,12 +2,36 @@
 
 ## 📋 개요
 
-콘서트 예약 서비스의 REST API 명세서입니다. 
+콘서트 예약 서비스의 REST API 명세서입니다.
 
 ### 기본 정보
 - **Base URL**: `http://localhost:8080`
 - **Content-Type**: `application/json`
 - **Database**: MySQL + Redis
+
+### 응답 형식 (Response Format)
+
+#### 성공 응답
+```json
+{
+  "code": 200,
+  "data": { ... },
+  "message": "성공 메시지"
+}
+```
+
+#### 에러 응답
+```json
+{
+  "code": 400,
+  "error": {
+    "type": "INVALID_DATA_TYPE",
+    "message": "상세 에러 메시지",
+    "details": { ... }
+  },
+  "timestamp": "2025-05-29T15:35:00Z"
+}
+```
 
 ### API 분류
 
@@ -51,7 +75,7 @@ POST /api/queue/token
 #### Response (201 Created)
 ```json
 {
-  "success": true,
+  "code": 201,
   "data": {
     "token": "550e8400-e29b-41d4-a716-446655440000",
     "userId": "user-123",
@@ -80,20 +104,30 @@ POST /api/queue/token
 ```json
 // 400 Bad Request
 {
-  "success": false,
+  "code": 400,
   "error": {
-    "code": "INVALID_USER_ID",
-    "message": "유효하지 않은 사용자 ID입니다."
-  }
+    "type": "INVALID_USER_ID",
+    "message": "유효하지 않은 사용자 ID입니다.",
+    "details": {
+      "userId": "user-123",
+      "reason": "User ID length must be between 3 and 50 characters"
+    }
+  },
+  "timestamp": "2025-05-29T15:20:00Z"
 }
 
 // 409 Conflict
 {
-  "success": false,
+  "code": 409,
   "error": {
-    "code": "TOKEN_ALREADY_EXISTS",
-    "message": "이미 발급된 토큰이 존재합니다."
-  }
+    "type": "TOKEN_ALREADY_EXISTS",
+    "message": "이미 발급된 토큰이 존재합니다.",
+    "details": {
+      "existingToken": "550e8400-e29b-41d4-a716-446655440000",
+      "expiresAt": "2025-05-29T16:20:00Z"
+    }
+  },
+  "timestamp": "2025-05-29T15:20:00Z"
 }
 ```
 
@@ -113,7 +147,7 @@ Authorization: Bearer {token}
 #### Response (200 OK)
 ```json
 {
-  "success": true,
+  "code": 200,
   "data": {
     "token": "550e8400-e29b-41d4-a716-446655440000",
     "userId": "user-123",
@@ -123,7 +157,8 @@ Authorization: Bearer {token}
     "totalInQueue": 1500,
     "activeUsers": 100,
     "maxActiveUsers": 200
-  }
+  },
+  "message": "대기열 상태 조회 성공"
 }
 ```
 
@@ -148,7 +183,7 @@ GET /api/concerts/available-dates
 #### Response (200 OK)
 ```json
 {
-  "success": true,
+  "code": 200,
   "data": {
     "concerts": [
       {
@@ -170,7 +205,8 @@ GET /api/concerts/available-dates
       "totalElements": 25,
       "totalPages": 2
     }
-  }
+  },
+  "message": "콘서트 목록 조회 성공"
 }
 ```
 
@@ -204,7 +240,7 @@ GET /api/concerts/{concertId}/seats
 #### Response (200 OK)
 ```json
 {
-  "success": true,
+  "code": 200,
   "data": {
     "concertId": 1,
     "concertTitle": "2025 Spring Concert",
@@ -239,7 +275,8 @@ GET /api/concerts/{concertId}/seats
       "temporarilyAssignedSeats": 10,
       "reservedSeats": 5
     }
-  }
+  },
+  "message": "좌석 정보 조회 성공"
 }
 ```
 
@@ -297,7 +334,7 @@ Content-Type: application/json
 #### Response (201 Created)
 ```json
 {
-  "success": true,
+  "code": 201,
   "data": {
     "reservationId": "550e8400-e29b-41d4-a716-446655440001",
     "seatId": 15,
@@ -332,37 +369,46 @@ Content-Type: application/json
 ```json
 // 409 Conflict - 이미 예약된 좌석
 {
-  "success": false,
+  "code": 409,
   "error": {
-    "code": "SEAT_NOT_AVAILABLE",
+    "type": "SEAT_NOT_AVAILABLE",
     "message": "선택한 좌석은 이미 다른 사용자가 예약했습니다.",
     "details": {
       "seatNumber": 15,
-      "currentStatus": "RESERVED"
+      "currentStatus": "RESERVED",
+      "reservedAt": "2025-05-29T14:30:00Z"
     }
-  }
+  },
+  "timestamp": "2025-05-29T15:30:00Z"
 }
 
 // 409 Conflict - 동시 예약 시도
 {
-  "success": false,
+  "code": 409,
   "error": {
-    "code": "CONCURRENT_RESERVATION_CONFLICT",
-    "message": "다른 사용자가 같은 좌석을 처리 중입니다. 잠시 후 재시도해주세요."
-  }
+    "type": "CONCURRENT_RESERVATION_CONFLICT",
+    "message": "다른 사용자가 같은 좌석을 처리 중입니다. 잠시 후 재시도해주세요.",
+    "details": {
+      "seatNumber": 15,
+      "retryAfterSeconds": 3
+    }
+  },
+  "timestamp": "2025-05-29T15:30:00Z"
 }
 
 // 403 Forbidden - 대기열 토큰 비활성
 {
-  "success": false,
+  "code": 403,
   "error": {
-    "code": "QUEUE_TOKEN_NOT_ACTIVE",
+    "type": "QUEUE_TOKEN_NOT_ACTIVE",
     "message": "대기열에서 순서를 기다려주세요.",
     "details": {
       "queuePosition": 50,
-      "estimatedWaitTimeMinutes": 5
+      "estimatedWaitTimeMinutes": 5,
+      "currentStatus": "WAITING"
     }
-  }
+  },
+  "timestamp": "2025-05-29T15:30:00Z"
 }
 ```
 
@@ -387,7 +433,7 @@ Authorization: Bearer {queue-token}
 #### Response (200 OK)
 ```json
 {
-  "success": true,
+  "code": 200,
   "data": {
     "reservationId": "550e8400-e29b-41d4-a716-446655440001",
     "userId": "user-123",
@@ -400,7 +446,8 @@ Authorization: Bearer {queue-token}
     "expiresAt": "2025-05-29T15:35:00Z",
     "confirmedAt": null,
     "remainingTimeSeconds": 180
-  }
+  },
+  "message": "예약 상태 조회 성공"
 }
 ```
 
@@ -450,7 +497,7 @@ Content-Type: application/json
 #### Response (200 OK)
 ```json
 {
-  "success": true,
+  "code": 200,
   "data": {
     "userId": "user-123",
     "transactionId": "550e8400-e29b-41d4-a716-446655440002",
@@ -480,6 +527,25 @@ Content-Type: application/json
 - **최대 충전 금액**: 1,000,000원
 - **충전 단위**: 1,000원 단위
 
+#### Error Responses
+```json
+// 400 Bad Request - 잘못된 충전 금액
+{
+  "code": 400,
+  "error": {
+    "type": "INVALID_CHARGE_AMOUNT",
+    "message": "충전 금액은 10,000원 이상 1,000,000원 이하여야 합니다.",
+    "details": {
+      "requestedAmount": 5000,
+      "minAmount": 10000,
+      "maxAmount": 1000000,
+      "requiredUnit": 1000
+    }
+  },
+  "timestamp": "2025-05-29T15:25:00Z"
+}
+```
+
 #### Transaction Type Values
 | 타입 | 설명 | ERD 매핑 |
 |------|------|----------|
@@ -503,12 +569,13 @@ GET /api/users/{userId}/balance
 #### Response (200 OK)
 ```json
 {
-  "success": true,
+  "code": 200,
   "data": {
     "userId": "user-123",
     "currentBalance": 150000,
     "lastTransactionAt": "2025-05-29T15:25:00Z"
-  }
+  },
+  "message": "잔액 조회 성공"
 }
 ```
 
@@ -554,7 +621,7 @@ Content-Type: application/json
 #### Response (200 OK)
 ```json
 {
-  "success": true,
+  "code": 200,
   "data": {
     "paymentId": "550e8400-e29b-41d4-a716-446655440003",
     "reservationId": "550e8400-e29b-41d4-a716-446655440001",
@@ -609,42 +676,47 @@ Content-Type: application/json
 ```json
 // 400 Bad Request - 잔액 부족
 {
-  "success": false,
+  "code": 400,
   "error": {
-    "code": "INSUFFICIENT_BALANCE",
+    "type": "INSUFFICIENT_BALANCE",
     "message": "잔액이 부족합니다.",
     "details": {
       "currentBalance": 30000,
       "requiredAmount": 50000,
       "shortfallAmount": 20000
     }
-  }
+  },
+  "timestamp": "2025-05-29T15:32:00Z"
 }
 
 // 400 Bad Request - 만료된 임시 배정
 {
-  "success": false,
+  "code": 400,
   "error": {
-    "code": "RESERVATION_EXPIRED",
+    "type": "RESERVATION_EXPIRED",
     "message": "예약 시간이 만료되었습니다. 다시 예약해주세요.",
     "details": {
       "reservationId": "550e8400-e29b-41d4-a716-446655440001",
-      "expiredAt": "2025-05-29T15:35:00Z"
+      "expiredAt": "2025-05-29T15:35:00Z",
+      "currentTime": "2025-05-29T15:36:00Z"
     }
-  }
+  },
+  "timestamp": "2025-05-29T15:36:00Z"
 }
 
 // 409 Conflict - 이미 결제된 예약
 {
-  "success": false,
+  "code": 409,
   "error": {
-    "code": "ALREADY_PAID",
+    "type": "ALREADY_PAID",
     "message": "이미 결제가 완료된 예약입니다.",
     "details": {
       "paymentId": "550e8400-e29b-41d4-a716-446655440003",
-      "paidAt": "2025-05-29T15:32:00Z"
+      "paidAt": "2025-05-29T15:32:00Z",
+      "amount": 50000
     }
-  }
+  },
+  "timestamp": "2025-05-29T15:32:05Z"
 }
 ```
 
@@ -664,7 +736,7 @@ GET /api/payments/{paymentId}
 #### Response (200 OK)
 ```json
 {
-  "success": true,
+  "code": 200,
   "data": {
     "paymentId": "550e8400-e29b-41d4-a716-446655440003",
     "reservationId": "550e8400-e29b-41d4-a716-446655440001",
@@ -682,7 +754,8 @@ GET /api/payments/{paymentId}
       "venue": "올림픽공원 체조경기장",
       "seatNumber": 15
     }
-  }
+  },
+  "message": "결제 내역 조회 성공"
 }
 ```
 
@@ -695,370 +768,26 @@ GET /api/payments/{paymentId}
 ```json
 // 401 Unauthorized - 토큰 없음
 {
-  "success": false,
+  "code": 401,
   "error": {
-    "code": "MISSING_TOKEN",
-    "message": "대기열 토큰이 필요합니다."
-  }
+    "type": "MISSING_TOKEN",
+    "message": "대기열 토큰이 필요합니다.",
+    "details": {
+      "requiredHeader": "Authorization: Bearer {token}"
+    }
+  },
+  "timestamp": "2025-05-29T15:35:00Z"
 }
 
 // 401 Unauthorized - 유효하지 않은 토큰
 {
-  "success": false,
+  "code": 401,
   "error": {
-    "code": "INVALID_TOKEN",
-    "message": "유효하지 않은 토큰입니다."
-  }
-}
-
-// 403 Forbidden - 대기열 미통과
-{
-  "success": false,
-  "error": {
-    "code": "QUEUE_TOKEN_NOT_ACTIVE",
-    "message": "대기열에서 순서를 기다려주세요.",
+    "type": "INVALID_TOKEN",
+    "message": "유효하지 않은 토큰입니다.",
     "details": {
-      "queuePosition": 50,
-      "estimatedWaitTimeMinutes": 5
+      "tokenFormat": "UUID",
+      "providedToken": "invalid-token-format"
     }
-  }
-}
-```
-
-### 데이터 검증 에러
-
-```json
-// 400 Bad Request - 잘못된 데이터 타입
-{
-  "success": false,
-  "error": {
-    "code": "INVALID_DATA_TYPE",
-    "message": "concertId는 정수여야 합니다.",
-    "details": {
-      "field": "concertId",
-      "expectedType": "integer",
-      "receivedValue": "abc"
-    }
-  }
-}
-
-// 404 Not Found - 리소스 없음
-{
-  "success": false,
-  "error": {
-    "code": "RESOURCE_NOT_FOUND",
-    "message": "해당 콘서트를 찾을 수 없습니다.",
-    "details": {
-      "concertId": 999
-    }
-  }
-}
-```
-
-### 서버 에러
-
-```json
-// 500 Internal Server Error
-{
-  "success": false,
-  "error": {
-    "code": "INTERNAL_SERVER_ERROR",
-    "message": "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
-    "timestamp": "2025-05-29T15:35:00Z"
-  }
-}
-
-// 503 Service Unavailable
-{
-  "success": false,
-  "error": {
-    "code": "SERVICE_TEMPORARILY_UNAVAILABLE",
-    "message": "서비스가 일시적으로 이용 불가능합니다.",
-    "retryAfterSeconds": 30
-  }
-}
-```
-
----
-
-## 📊 데이터 타입 매핑
-
-### MySQL → JSON 응답 변환
-
-| MySQL 타입 | JSON 타입 | 변환 규칙 | 예시 |
-|-------------|-----------|-----------|------|
-| BIGINT | integer | 그대로 | `123` |
-| VARCHAR(50) | string | 그대로 | `"user-123"` |
-| VARCHAR(36) | string | UUID 형태 | `"550e8400-e29b-41d4-a716-446655440000"` |
-| DECIMAL(10,2) | integer | 소수점 제거 (원 단위) | `50000` (500.00 → 50000) |
-| DECIMAL(15,2) | integer | 소수점 제거 (원 단위) | `150000` |
-| TIMESTAMP | string | ISO 8601 형태 | `"2025-05-29T15:30:00Z"` |
-| DATE | string | YYYY-MM-DD 형태 | `"2025-06-01"` |
-| TIME | string | HH:mm:ss 형태 | `"19:00:00"` |
-| ENUM | string | 문자열 그대로 | `"AVAILABLE"` |
-
-### Redis → JSON 응답 변환
-
-| Redis 타입 | JSON 타입 | 변환 규칙 | 예시 |
-|-------------|-----------|-----------|------|
-| String (JSON) | object | JSON 파싱 | `{"position": 150, "status": "WAITING"}` |
-| Sorted Set Score | integer | 점수를 정수로 | `150` (대기 순서) |
-| Set Member | string | 문자열 그대로 | `"user-123"` |
-| TTL | integer | 초 단위 | `300` (5분 = 300초) |
-
----
-
-## 📊 API 분류 요약
-
-### 🔒 대기열 필요 API (Critical Operations)
-- **POST /api/reservations** - 좌석 예약
-- **GET /api/reservations/{reservationId}** - 예약 상태 조회
-- **POST /api/users/{userId}/balance** - 잔액 충전
-- **POST /api/payments** - 결제 실행
-
-### 🔓 일반 API (Information Access)
-- **POST /api/queue/token** - 토큰 발급
-- **GET /api/queue/status** - 대기열 상태 조회
-- **GET /api/concerts/available-dates** - 콘서트 날짜 조회
-- **GET /api/concerts/{concertId}/seats** - 좌석 정보 조회
-- **GET /api/users/{userId}/balance** - 잔액 조회
-- **GET /api/payments/{paymentId}** - 결제 내역 조회
-
----
-
-## 📊 HTTP 상태 코드
-
-| 상태 코드 | 설명 | 사용 상황 |
-|-----------|------|-----------|
-| 200 | OK | 조회 성공 |
-| 201 | Created | 생성 성공 (토큰 발급, 예약) |
-| 400 | Bad Request | 잘못된 요청 파라미터, 데이터 타입 오류 |
-| 401 | Unauthorized | 인증 실패, 토큰 없음/무효 |
-| 403 | Forbidden | 권한 없음 (대기열 미통과) |
-| 404 | Not Found | 리소스 없음 (콘서트, 예약, 결제 등) |
-| 409 | Conflict | 동시성 충돌, 중복 요청, 좌석 중복 예약 |
-| 422 | Unprocessable Entity | 비즈니스 로직 위반 |
-| 429 | Too Many Requests | 요청 횟수 제한 초과 |
-| 500 | Internal Server Error | 서버 오류 |
-| 503 | Service Unavailable | 서비스 일시 중단 |
-
----
-
-## 🔧 API 테스트 예시
-
-### 1. 전체 플로우 테스트
-
-```bash
-# 1. 토큰 발급
-TOKEN_RESPONSE=$(curl -s -X POST http://localhost:8080/api/queue/token \
-  -H "Content-Type: application/json" \
-  -d '{"userId": "user-123"}')
-
-TOKEN=$(echo $TOKEN_RESPONSE | jq -r '.data.token')
-echo "발급받은 토큰: $TOKEN"
-
-# 2. 대기열 상태 확인 (폴링)
-curl -X GET http://localhost:8080/api/queue/status \
-  -H "Authorization: Bearer $TOKEN"
-
-# 3. 콘서트 날짜 조회 (토큰 불필요)
-curl -X GET http://localhost:8080/api/concerts/available-dates
-
-# 4. 좌석 조회 (토큰 불필요)
-curl -X GET http://localhost:8080/api/concerts/1/seats
-
-# 5. 잔액 조회 (토큰 불필요)
-curl -X GET http://localhost:8080/api/users/user-123/balance
-
-# 6. 잔액 충전 (토큰 필요, 대기열 통과 후)
-curl -X POST http://localhost:8080/api/users/user-123/balance \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 100000}'
-
-# 7. 좌석 예약 (토큰 필요, 대기열 통과 후)
-RESERVATION_RESPONSE=$(curl -s -X POST http://localhost:8080/api/reservations \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"concertId": 1, "seatNumber": 15, "userId": "user-123"}')
-
-RESERVATION_ID=$(echo $RESERVATION_RESPONSE | jq -r '.data.reservationId')
-echo "예약 ID: $RESERVATION_ID"
-
-# 8. 예약 상태 조회
-curl -X GET http://localhost:8080/api/reservations/$RESERVATION_ID \
-  -H "Authorization: Bearer $TOKEN"
-
-# 9. 결제 (토큰 필요)
-PAYMENT_RESPONSE=$(curl -s -X POST http://localhost:8080/api/payments \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"reservationId\": \"$RESERVATION_ID\", \"userId\": \"user-123\"}")
-
-PAYMENT_ID=$(echo $PAYMENT_RESPONSE | jq -r '.data.paymentId')
-echo "결제 ID: $PAYMENT_ID"
-
-# 10. 결제 내역 조회 (토큰 불필요)
-curl -X GET http://localhost:8080/api/payments/$PAYMENT_ID
-```
-
-### 2. 동시성 테스트
-
-```bash
-# 같은 좌석에 대한 동시 예약 테스트
-# 터미널 1
-curl -X POST http://localhost:8080/api/reservations \
-  -H "Authorization: Bearer $TOKEN1" \
-  -H "Content-Type: application/json" \
-  -d '{"concertId": 1, "seatNumber": 15, "userId": "user-1"}' &
-
-# 터미널 2 (동시 실행)
-curl -X POST http://localhost:8080/api/reservations \
-  -H "Authorization: Bearer $TOKEN2" \
-  -H "Content-Type: application/json" \
-  -d '{"concertId": 1, "seatNumber": 15, "userId": "user-2"}' &
-
-# 결과: 하나는 성공, 하나는 409 Conflict
-```
-
-### 3. 에러 케이스 테스트
-
-```bash
-# 잘못된 데이터 타입
-curl -X POST http://localhost:8080/api/reservations \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"concertId": "abc", "seatNumber": 15, "userId": "user-123"}'
-# 응답: 400 Bad Request
-
-# 존재하지 않는 콘서트
-curl -X POST http://localhost:8080/api/reservations \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"concertId": 999, "seatNumber": 15, "userId": "user-123"}'
-# 응답: 404 Not Found
-
-# 토큰 없이 대기열 필요 API 호출
-curl -X POST http://localhost:8080/api/reservations \
-  -H "Content-Type: application/json" \
-  -d '{"concertId": 1, "seatNumber": 15, "userId": "user-123"}'
-# 응답: 401 Unauthorized
-
-# 잔액 부족 시 결제
-curl -X POST http://localhost:8080/api/payments \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"reservationId": "$RESERVATION_ID", "userId": "user-123"}'
-# 응답: 400 Bad Request (INSUFFICIENT_BALANCE)
-```
-
----
-
-## 🔍 API 개발 가이드
-
-### 1. 데이터 검증 체크리스트
-
-#### Request 검증
-- [ ] 필수 필드 존재 여부
-- [ ] 데이터 타입 일치 (integer, string, UUID 형식)
-- [ ] 범위 검증 (seatNumber: 1-50, amount: 10,000-1,000,000)
-- [ ] 외래키 존재 여부 (concertId, userId 등)
-
-#### 비즈니스 로직 검증
-- [ ] 대기열 토큰 상태 (ACTIVE만 허용)
-- [ ] 좌석 상태 (AVAILABLE만 예약 가능)
-- [ ] 잔액 충분 여부
-- [ ] 예약 만료 시간 확인
-
-### 2. 트랜잭션 경계
-
-#### 좌석 예약 트랜잭션
-```sql
-BEGIN;
--- 1. 좌석 상태 확인 및 락
-SELECT * FROM seats WHERE seat_id = ? FOR UPDATE;
--- 2. 좌석 상태 업데이트
-UPDATE seats SET status = 'TEMPORARILY_ASSIGNED', assigned_user_id = ?, assigned_until = ? WHERE seat_id = ?;
--- 3. 예약 레코드 생성
-INSERT INTO reservations (...) VALUES (...);
-COMMIT;
-```
-
-#### 결제 트랜잭션
-```sql
-BEGIN;
--- 1. 예약 상태 확인
-SELECT * FROM reservations WHERE reservation_id = ? FOR UPDATE;
--- 2. 잔액 확인 및 차감
-UPDATE users SET balance = balance - ? WHERE user_id = ? AND balance >= ?;
--- 3. 결제 레코드 생성
-INSERT INTO payments (...) VALUES (...);
--- 4. 좌석 확정 처리
-UPDATE seats SET status = 'RESERVED', reserved_at = NOW() WHERE seat_id = ?;
--- 5. 예약 확정 처리
-UPDATE reservations SET status = 'CONFIRMED', confirmed_at = NOW() WHERE reservation_id = ?;
--- 6. 잔액 거래 내역 생성
-INSERT INTO balance_transactions (...) VALUES (...);
-COMMIT;
-```
-
-### 3. 캐시 전략
-
-#### Redis 캐싱 대상
-- **콘서트 목록**: TTL 10분 (자주 변경되지 않음)
-- **사용자 잔액**: TTL 1분 (결제 시 실시간 반영 필요)
-- **좌석 현황**: 캐싱 안함 (실시간 정확성 중요)
-
-#### 캐시 무효화
-```
-잔액 충전/결제 → 사용자 잔액 캐시 삭제
-콘서트 정보 변경 → 콘서트 목록 캐시 삭제
-```
-
-### 4. 에러 처리 패턴
-
-#### Controller Layer
-```java
-@PostMapping("/reservations")
-public ResponseEntity<?> createReservation(@RequestBody ReservationRequest request) {
-    try {
-        // 비즈니스 로직 실행
-        ReservationResponse response = reservationService.createReservation(request);
-        return ResponseEntity.status(201).body(ApiResponse.success(response));
-    } catch (SeatNotAvailableException e) {
-        return ResponseEntity.status(409).body(ApiResponse.error("SEAT_NOT_AVAILABLE", e.getMessage()));
-    } catch (InsufficientBalanceException e) {
-        return ResponseEntity.status(400).body(ApiResponse.error("INSUFFICIENT_BALANCE", e.getMessage()));
-    }
-}
-```
-
-#### Global Exception Handler
-```java
-@ControllerAdvice
-public class GlobalExceptionHandler {
-    
-    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<?> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
-        return ResponseEntity.status(400).body(
-            ApiResponse.error("INVALID_DATA_TYPE", "잘못된 데이터 타입입니다.")
-        );
-    }
-    
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<?> handleDataIntegrity(DataIntegrityViolationException e) {
-        return ResponseEntity.status(409).body(
-            ApiResponse.error("DATA_INTEGRITY_VIOLATION", "데이터 무결성 위반입니다.")
-        );
-    }
-}
-```
-
----
-
-## 📚 관련 문서
-
-- [요구사항 명세서](./requirements.md)
-- [데이터베이스 ERD](./erd.md)
-- [시퀀스 다이어그램](./sequence-diagrams.md)
-- [시스템 아키텍처](./architecture.md)
+  },
+  "timestamp": "2025
