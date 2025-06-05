@@ -1,7 +1,7 @@
 package kr.hhplus.be.server.service;
 
 
-import kr.hhplus.be.server.ConcertNotFoundException;
+import kr.hhplus.be.server.exception.ConcertNotFoundException;
 import kr.hhplus.be.server.domain.Concert;
 import kr.hhplus.be.server.dto.ConcertResponseDto;
 import kr.hhplus.be.server.repository.ConcertRepository;
