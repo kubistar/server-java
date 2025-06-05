@@ -34,9 +34,21 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 	implementation("org.springframework.boot:spring-boot-starter-web")
+    // Swagger
+    implementation ("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.1.0")
+	// .env 파일 읽기 위한 라이브러리
+	implementation ("me.paulschwarz:spring-dotenv:4.0.0")
+	// Lombok
+	compileOnly("org.projectlombok:lombok")
+	annotationProcessor("org.projectlombok:lombok")
+	testCompileOnly("org.projectlombok:lombok")
+	testAnnotationProcessor("org.projectlombok:lombok")
 
     // DB
 	runtimeOnly("com.mysql:mysql-connector-j")
+
+	// Redis (추후 대기열 구현 시)
+	// implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
@@ -44,6 +56,7 @@ dependencies {
 	testImplementation("org.testcontainers:junit-jupiter")
 	testImplementation("org.testcontainers:mysql")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
 }
 
 tasks.withType<Test> {
