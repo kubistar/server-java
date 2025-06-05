@@ -33,4 +33,9 @@ public interface ConcertRepository {
      * 콘서트 저장
      */
     Concert save(Concert concert);
+
+    /**
+     * 모든 콘서트 조회
+     */
+    List<Concert> findAll();
 }

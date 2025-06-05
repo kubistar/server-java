@@ -1,4 +1,4 @@
-# 콘서트 예약 서비스 설정
+# 콘서트 예약 application.yml - Redis 설정 추가
 server:
   port: 8080
 
@@ -20,6 +20,22 @@ spring:
       maximum-pool-size: 3
       connection-timeout: 10000
       max-lifetime: 60000
+
+  # 🔴 Redis 설정 (대기열 시스템용)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:""}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+
 
   # 🛠️ JPA 설정
   jpa:
@@ -71,3 +87,9 @@ info:
     description: "대기열 기반 콘서트 좌석 예약 시스템"
     version: "v1.0.0"
     environment: ${SPRING_PROFILES_ACTIVE:local}
+
+# 🎫 대기열 시스템 설정
+queue:
+  max-active-users: 100  # 동시 활성 사용자 수
+  token-expire-minutes: 30  # 토큰 만료 시간 (분)
+  wait-time-per-user: 10  # 사용자당 대기 시간 (초)

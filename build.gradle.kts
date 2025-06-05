@@ -47,8 +47,8 @@ dependencies {
     // DB
 	runtimeOnly("com.mysql:mysql-connector-j")
 
-	// Redis (추후 대기열 구현 시)
-	// implementation("org.springframework.boot:spring-boot-starter-data-redis")
+	// Redis
+	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
