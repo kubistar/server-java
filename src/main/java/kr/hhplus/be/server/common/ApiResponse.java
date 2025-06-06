@@ -1,6 +1,7 @@
 package kr.hhplus.be.server.common;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import kr.hhplus.be.server.dto.ErrorResponse;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -29,6 +30,15 @@ public class ApiResponse<T> {
      * 현재 시간을 timestamp로 자동 설정
      */
     private ApiResponse() {
+        this.timestamp = LocalDateTime.now();
+    }
+
+    private ApiResponse(int code, T data, ErrorResponse error) {
+        this.code = code;
+        this.data = data;
+        this.error = error != null
+                ? new ErrorDetails(error.getType(), error.getMessage(), error.getDetails())
+                : null;
         this.timestamp = LocalDateTime.now();
     }
 
@@ -88,6 +98,11 @@ public class ApiResponse<T> {
         response.error = new ErrorDetails(type, message, details);
         return response;
     }
+
+    public static <T> ApiResponse<T> error(int status, ErrorResponse error) {
+        return new ApiResponse<>(status, null, error);
+    }
+
 
     /**
      * 에러 상세 정보를 담는 내부 클래스

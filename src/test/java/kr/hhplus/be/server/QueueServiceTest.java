@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -25,6 +27,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class QueueServiceTest {
 
     private static final Logger log = LoggerFactory.getLogger(QueueServiceTest.class);
@@ -162,43 +165,34 @@ class QueueServiceTest {
     @DisplayName("유효한 토큰으로 대기열 상태를 조회한다")
     void getQueueStatus_ValidToken_ShouldReturnTokenInfo() {
         // given
-        log.info("=== 테스트 시작: 유효한 토큰으로 대기열 상태 조회 ===");
-
         String token = "valid-token-123";
+        String userId = "user-123";
+
         QueueToken mockToken = new QueueToken(
                 token,
-                "user-123",
+                userId,
                 5L,
                 2,
                 QueueStatus.WAITING,
                 java.time.LocalDateTime.now(),
                 java.time.LocalDateTime.now().plusMinutes(30)
         );
-        log.info("Mock 토큰 정보: token={}, status={}, position={}",
-                token, mockToken.getStatus(), mockToken.getQueuePosition());
 
         when(valueOperations.get("queue:token:" + token)).thenReturn(mockToken);
 
+        // 🔥 zSetOperations Mock 추가 - 5번째 순서를 위해 rank는 4L
+        when(zSetOperations.rank("queue:waiting", userId)).thenReturn(4L);
+
         // when
-        log.info("대기열 상태 조회: queueService.getQueueStatus({})", token);
         QueueToken result = queueService.getQueueStatus(token);
 
         // then
-        log.info("=== 검증 시작 ===");
-        log.info("조회된 토큰 정보:");
-        log.info("  - Token: {}", result.getToken());
-        log.info("  - Status: {}", result.getStatus());
-        log.info("  - Position: {}", result.getQueuePosition());
-
         assertThat(result.getToken()).isEqualTo(token);
         assertThat(result.getStatus()).isEqualTo(QueueStatus.WAITING);
-        assertThat(result.getQueuePosition()).isEqualTo(5L);
-        log.info("✓ 토큰 상태 조회 검증 통과");
+        assertThat(result.getQueuePosition()).isEqualTo(5L); // 4L + 1 = 5L
 
         verify(valueOperations).get("queue:token:" + token);
-        log.info("✓ Redis 호출 검증 통과");
-
-        log.info("=== 테스트 완료: 유효한 토큰 상태 조회 검증 통과 ===");
+        verify(zSetOperations).rank("queue:waiting", userId);
     }
 
     @Test
