@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import kr.hhplus.be.server.command.ReserveSeatCommand;
 import kr.hhplus.be.server.controller.ReservationController;
 import kr.hhplus.be.server.dto.ReservationResult;
+import kr.hhplus.be.server.service.QueueService;
 import kr.hhplus.be.server.service.ReserveSeatUseCase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,9 @@ class ReservationControllerTest {
 
     @MockitoBean
     private ReserveSeatUseCase reserveSeatUseCase;
+
+    @MockitoBean
+    private QueueService queueService;
 
     @Test
     @DisplayName("POST /api/reservations - 정상적인 좌석 예약 요청")

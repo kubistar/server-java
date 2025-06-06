@@ -173,7 +173,7 @@ class ReservationServiceTest {
 
         // then
         assertThat(result).isNotNull();
-        assertThat(result.getReservationId()).isEqualTo(reservationId);
+        assertThat(result.getReservationId()).isEqualTo(reservation.getReservationId());
         assertThat(result.getUserId()).isEqualTo("user-123");
         assertThat(result.getSeatNumber()).isEqualTo(15);
     }
@@ -243,6 +243,10 @@ class ReservationServiceTest {
 
         Seat seat1 = new Seat(1L, 1L, 15, 50000);
         Seat seat2 = new Seat(2L, 1L, 16, 50000);
+
+        // 좌석을 임시 배정 상태로 만들어야 함
+        seat1.assignTemporarily("user-123", LocalDateTime.now().minusMinutes(1));
+        seat2.assignTemporarily("user-456", LocalDateTime.now().minusMinutes(2));
 
         given(reservationRepository.findExpiredReservations())
                 .willReturn(Arrays.asList(expiredReservation1, expiredReservation2));
