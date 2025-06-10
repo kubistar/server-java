@@ -1,7 +1,11 @@
 package kr.hhplus.be.server.common;
 
-import kr.hhplus.be.server.dto.ErrorResponse;
-import kr.hhplus.be.server.exception.*;
+import kr.hhplus.be.server.common.exception.ErrorResponse;
+import kr.hhplus.be.server.concert.exception.ConcertNotFoundException;
+import kr.hhplus.be.server.reservation.exception.ConcurrentReservationException;
+import kr.hhplus.be.server.reservation.exception.ReservationExpiredException;
+import kr.hhplus.be.server.reservation.exception.ReservationNotFoundException;
+import kr.hhplus.be.server.seat.exception.SeatNotAvailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;

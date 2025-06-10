@@ -1,7 +1,7 @@
 package kr.hhplus.be.server.common;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import kr.hhplus.be.server.dto.ErrorResponse;
+import kr.hhplus.be.server.common.exception.ErrorResponse;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
