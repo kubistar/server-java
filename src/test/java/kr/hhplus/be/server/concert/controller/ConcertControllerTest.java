@@ -4,6 +4,7 @@ import kr.hhplus.be.server.common.GlobalExceptionHandler;
 import kr.hhplus.be.server.concert.dto.ConcertResponseDto;
 import kr.hhplus.be.server.concert.exception.ConcertNotFoundException;
 import kr.hhplus.be.server.concert.service.ConcertService;
+import kr.hhplus.be.server.queue.service.QueueService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,9 @@ class ConcertControllerTest {
 
     @MockitoBean
     private ConcertService concertService;
+
+    @MockitoBean
+    private QueueService queueService; // 이 줄 추가
 
     @Autowired
     private ObjectMapper objectMapper;

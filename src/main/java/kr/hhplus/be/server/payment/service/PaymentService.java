@@ -1,7 +1,6 @@
 package kr.hhplus.be.server.payment.service;
 
 import kr.hhplus.be.server.payment.command.PaymentCommand;
-import kr.hhplus.be.server.domain.*;
 import kr.hhplus.be.server.payment.dto.PaymentResult;
 import kr.hhplus.be.server.payment.exception.PaymentNotFoundException;
 import kr.hhplus.be.server.reservation.exception.ReservationNotFoundException;
@@ -9,7 +8,6 @@ import kr.hhplus.be.server.payment.exception.InsufficientBalanceException;
 import kr.hhplus.be.server.payment.domain.Payment;
 import kr.hhplus.be.server.payment.repository.PaymentRepository;
 import kr.hhplus.be.server.point.repository.BalanceTransactionRepository;
-import kr.hhplus.be.server.repository.*;
 import kr.hhplus.be.server.reservation.domain.Reservation;
 import kr.hhplus.be.server.reservation.repository.ReservationRepository;
 import kr.hhplus.be.server.seat.domain.Seat;

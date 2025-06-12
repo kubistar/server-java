@@ -7,7 +7,6 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
-@Repository
 public interface SeatRepository {
     Optional<Seat> findById(Long seatId);
     Optional<Seat> findByConcertIdAndSeatNumber(Long concertId, Integer seatNumber);

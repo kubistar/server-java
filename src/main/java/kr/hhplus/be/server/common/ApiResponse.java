@@ -14,15 +14,15 @@ import java.time.LocalDateTime;
 @JsonInclude(JsonInclude.Include.NON_NULL)   // null 값인 필드는 JSON에서 제외
 @Getter
 public class ApiResponse<T> {
-    // HTTP 상태 코드 (200, 201, 400, 404, 500 등)
+    /** HTTP 상태 코드 (200, 201, 400, 404, 500 등)*/
     private int code;
-    // 성공 시 반환할 실제 데이터
+    /** 성공 시 반환할 실제 데이터 */
     private T data;
-    // 성공 시 응답 메시지
+    /** 성공 시 응답 메시지 */
     private String message;
-    // 실패 시 에러 정보
+    /** 실패 시 에러 정보 */
     private ErrorDetails error;
-    // 응답 생성 시간
+    /** 응답 생성 시간 */
     private LocalDateTime timestamp;
 
     /**

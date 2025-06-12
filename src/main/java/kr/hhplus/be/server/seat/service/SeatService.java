@@ -1,10 +1,11 @@
 package kr.hhplus.be.server.seat.service;
 
-import kr.hhplus.be.server.seat.dto.SeatPageResponse;
-import kr.hhplus.be.server.seat.dto.SeatResponseDto;
+
 import kr.hhplus.be.server.concert.domain.Concert;
 import kr.hhplus.be.server.concert.exception.ConcertNotFoundException;
 import kr.hhplus.be.server.concert.repository.ConcertRepository;
+import kr.hhplus.be.server.seat.dto.SeatPageResponse;
+import kr.hhplus.be.server.seat.dto.SeatResponseDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

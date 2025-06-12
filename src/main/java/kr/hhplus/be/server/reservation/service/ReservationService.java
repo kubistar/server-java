@@ -1,17 +1,19 @@
 package kr.hhplus.be.server.reservation.service;
 
+import kr.hhplus.be.server.common.lock.DistributedLockService;
 import kr.hhplus.be.server.reservation.command.ReserveSeatCommand;
+
 import kr.hhplus.be.server.reservation.domain.Reservation;
-import kr.hhplus.be.server.seat.domain.Seat;
 import kr.hhplus.be.server.reservation.dto.ReservationResult;
 import kr.hhplus.be.server.reservation.repository.ReservationRepository;
+import kr.hhplus.be.server.seat.domain.Seat;
 import kr.hhplus.be.server.seat.repository.SeatRepository;
-import kr.hhplus.be.server.common.lock.DistributedLockService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+
 
 @Service
 @Transactional

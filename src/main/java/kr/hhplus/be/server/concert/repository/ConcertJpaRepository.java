@@ -13,7 +13,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @Repository
-interface ConcertJpaRepository extends JpaRepository<Concert, Long> {
+public interface ConcertJpaRepository extends JpaRepository<Concert, Long> {
 
     @Query("SELECT c FROM Concert c WHERE c.concertDate >= :currentDate ORDER BY c.concertDate, c.concertTime")
     Page<Concert> findAvailableConcerts(@Param("currentDate") LocalDate currentDate, Pageable pageable);

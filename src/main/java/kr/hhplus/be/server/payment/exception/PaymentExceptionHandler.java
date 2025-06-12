@@ -1,6 +1,6 @@
 package kr.hhplus.be.server.payment.exception;
 
-import kr.hhplus.be.server.exception.ErrorResponse;
+import kr.hhplus.be.server.common.exception.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

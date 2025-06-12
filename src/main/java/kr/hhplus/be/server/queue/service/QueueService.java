@@ -8,15 +8,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
  * 대기열 관리 서비스
- * Redis를 활용한 분산 대기열 시스템
+ * Redis를 활용한 분산 대기열 시스템 (피드백 반영)
  */
 @Service
 public class QueueService {
@@ -34,17 +36,23 @@ public class QueueService {
     @Value("${queue.wait-time-per-user:10}")
     private int waitTimePerUser;
 
+    @Value("${queue.lock-timeout-seconds:5}")
+    private int lockTimeoutSeconds;
+
     // Redis 키 패턴
     private static final String QUEUE_TOKEN_KEY = "queue:token:";
     private static final String WAITING_QUEUE_KEY = "queue:waiting";
     private static final String ACTIVE_USERS_KEY = "queue:active";
+    private static final String USER_TOKEN_MAPPING_KEY = "queue:user:token:";
+    private static final String USER_ACTIVE_KEY_PREFIX = "queue:user:active:";
+    private static final String QUEUE_LOCK_KEY = "queue:lock";
 
     public QueueService(RedisTemplate<String, Object> redisTemplate) {
         this.redisTemplate = redisTemplate;
     }
 
     /**
-     * 대기열 토큰 발급
+     * 대기열 토큰 발급 (피드백 반영 - 동시성 문제 해결)
      * @param userId 사용자 ID
      * @return 발급된 토큰 정보
      */
@@ -58,25 +66,43 @@ public class QueueService {
             return existingToken;
         }
 
+        // 분산 락 획득 시도 (동시성 문제 해결)
+        String lockValue = UUID.randomUUID().toString();
+        boolean lockAcquired = acquireLock(QUEUE_LOCK_KEY, lockValue, lockTimeoutSeconds);
+
+        if (!lockAcquired) {
+            throw new RuntimeException("대기열 처리 중입니다. 잠시 후 다시 시도해주세요.");
+        }
+
+        try {
+            return issueTokenWithLock(userId);
+        } finally {
+            releaseLock(QUEUE_LOCK_KEY, lockValue);
+        }
+    }
+
+    private QueueToken issueTokenWithLock(String userId) {
         // 새 토큰 생성
         String token = UUID.randomUUID().toString();
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiresAt = now.plusMinutes(tokenExpireMinutes);
 
-        // 현재 활성 사용자 수 확인
+        // 만료된 사용자들 먼저 정리
+        cleanupExpiredUsers();
+
+        // 현재 활성 사용자 수 확인 (정리 후)
         Long activeUserCount = redisTemplate.opsForSet().size(ACTIVE_USERS_KEY);
         log.info("현재 활성 사용자 수: {}, 최대 허용: {}", activeUserCount, maxActiveUsers);
 
         QueueToken queueToken;
 
-        if (activeUserCount < maxActiveUsers) {
+        if (activeUserCount != null && activeUserCount < maxActiveUsers) {
             // 즉시 활성화
             queueToken = new QueueToken(token, userId, 0L, 0,
                     QueueStatus.ACTIVE, now, expiresAt);
 
-            // 활성 사용자 목록에 추가
-            redisTemplate.opsForSet().add(ACTIVE_USERS_KEY, userId);
-            redisTemplate.expire(ACTIVE_USERS_KEY, tokenExpireMinutes, TimeUnit.MINUTES);
+            // 활성 사용자 목록에 추가 (개별 expire 관리로 수정)
+            addActiveUserWithIndividualExpire(userId, token, expiresAt);
 
             log.info("즉시 활성화: userId={}, token={}", userId, token);
         } else {
@@ -100,8 +126,61 @@ public class QueueService {
         redisTemplate.opsForValue().set(QUEUE_TOKEN_KEY + token, queueToken,
                 tokenExpireMinutes, TimeUnit.MINUTES);
 
+        // 사용자-토큰 매핑 저장 (기존 토큰 찾기용)
+        redisTemplate.opsForValue().set(USER_TOKEN_MAPPING_KEY + userId, token,
+                tokenExpireMinutes, TimeUnit.MINUTES);
+
         log.info("토큰 발급 완료: userId={}, token={}, status={}", userId, token, queueToken.getStatus());
         return queueToken;
+    }
+
+    /**
+     * 활성 사용자 추가
+     */
+    private void addActiveUserWithIndividualExpire(String userId, String token, LocalDateTime expiresAt) {
+        // Set에 사용자 추가 (공통 Set은 expire 설정하지 않음)
+        redisTemplate.opsForSet().add(ACTIVE_USERS_KEY, userId);
+
+        // 개별 사용자별 활성 상태 키로 만료시간 관리
+        String userActiveKey = USER_ACTIVE_KEY_PREFIX + userId;
+        redisTemplate.opsForValue().set(userActiveKey, token, tokenExpireMinutes, TimeUnit.MINUTES);
+
+        log.info("사용자 {}가 활성 상태로 등록되었습니다. (개별 expire 적용)", userId);
+    }
+
+    /**
+     * 만료된 사용자들 정리
+     */
+    private void cleanupExpiredUsers() {
+        Set<Object> activeUsers = redisTemplate.opsForSet().members(ACTIVE_USERS_KEY);
+        if (activeUsers != null) {
+            for (Object userIdObj : activeUsers) {
+                String userId = (String) userIdObj;
+                String userActiveKey = USER_ACTIVE_KEY_PREFIX + userId;
+
+                if (!Boolean.TRUE.equals(redisTemplate.hasKey(userActiveKey))) {
+                    // 개별 활성 키가 만료되었으면 Set에서도 제거
+                    redisTemplate.opsForSet().remove(ACTIVE_USERS_KEY, userId);
+                    log.info("만료된 사용자 {} 정리 완료", userId);
+                }
+            }
+        }
+    }
+
+    /**
+     * 기존 토큰 찾기
+     */
+    private QueueToken findExistingToken(String userId) {
+        // 사용자-토큰 매핑에서 토큰 조회
+        String existingToken = (String) redisTemplate.opsForValue().get(USER_TOKEN_MAPPING_KEY + userId);
+
+        if (existingToken != null) {
+            // 토큰 정보 조회
+            QueueToken tokenInfo = (QueueToken) redisTemplate.opsForValue().get(QUEUE_TOKEN_KEY + existingToken);
+            return tokenInfo;
+        }
+
+        return null;
     }
 
     /**
@@ -121,7 +200,7 @@ public class QueueService {
 
         if (queueToken.isExpired()) {
             log.info("만료된 토큰: token={}", token);
-            expireToken(token);
+            expireToken(token, queueToken.getUserId());
             throw new QueueTokenExpiredException("만료된 토큰입니다: " + token);
         }
 
@@ -161,10 +240,31 @@ public class QueueService {
     }
 
     /**
-     * 대기열에서 사용자를 활성화 (스케줄러에서 호출)
+     * 대기열에서 사용자를 활성화
      */
+    @Scheduled(fixedDelay = 5000) // 5초마다 실행
     public void activateWaitingUsers() {
         log.info("대기 중인 사용자 활성화 프로세스 시작");
+
+        // 분산 락 획득 시도
+        String lockValue = UUID.randomUUID().toString();
+        boolean lockAcquired = acquireLock(QUEUE_LOCK_KEY, lockValue, lockTimeoutSeconds);
+
+        if (!lockAcquired) {
+            log.debug("다른 프로세스에서 활성화 작업 진행 중");
+            return;
+        }
+
+        try {
+            activateWaitingUsersWithLock();
+        } finally {
+            releaseLock(QUEUE_LOCK_KEY, lockValue);
+        }
+    }
+
+    private void activateWaitingUsersWithLock() {
+        // 만료된 사용자들 먼저 정리
+        cleanupExpiredUsers();
 
         Long activeUserCount = redisTemplate.opsForSet().size(ACTIVE_USERS_KEY);
         long availableSlots = maxActiveUsers - (activeUserCount != null ? activeUserCount : 0);
@@ -175,7 +275,7 @@ public class QueueService {
         }
 
         // 대기열에서 가장 오래 기다린 사용자들 가져오기
-        var waitingUsers = redisTemplate.opsForZSet().range(WAITING_QUEUE_KEY, 0, availableSlots - 1);
+        Set<Object> waitingUsers = redisTemplate.opsForZSet().range(WAITING_QUEUE_KEY, 0, availableSlots - 1);
 
         if (waitingUsers == null || waitingUsers.isEmpty()) {
             log.info("대기 중인 사용자 없음");
@@ -188,25 +288,20 @@ public class QueueService {
             // 대기열에서 제거
             redisTemplate.opsForZSet().remove(WAITING_QUEUE_KEY, userId);
 
-            // 활성 사용자로 추가
-            redisTemplate.opsForSet().add(ACTIVE_USERS_KEY, userId);
+            // 활성 사용자로 추가 (개별 expire 관리)
+            String userToken = (String) redisTemplate.opsForValue().get(USER_TOKEN_MAPPING_KEY + userId);
+            if (userToken != null) {
+                LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(tokenExpireMinutes);
+                addActiveUserWithIndividualExpire(userId, userToken, expiresAt);
 
-            // 해당 사용자의 토큰 찾아서 활성화
-            activateUserToken(userId);
+                // 해당 사용자의 토큰 활성화
+                activateUserToken(userId, userToken);
+            }
 
             log.info("사용자 활성화 완료: userId={}", userId);
         }
 
         log.info("대기 중인 사용자 활성화 완료: activatedCount={}", waitingUsers.size());
-    }
-
-    /**
-     * 기존 토큰 찾기
-     */
-    private QueueToken findExistingToken(String userId) {
-        // TODO: userId로 기존 토큰을 찾는 로직 구현
-        // 현재는 간단히 null 반환
-        return null;
     }
 
     /**
@@ -228,16 +323,65 @@ public class QueueService {
     /**
      * 사용자 토큰 활성화
      */
-    private void activateUserToken(String userId) {
-        // TODO: userId로 토큰을 찾아서 활성화하는 로직 구현
-        log.debug("사용자 토큰 활성화: userId={}", userId);
+    private void activateUserToken(String userId, String token) {
+        QueueToken queueToken = (QueueToken) redisTemplate.opsForValue().get(QUEUE_TOKEN_KEY + token);
+        if (queueToken != null) {
+            queueToken.activate();
+            queueToken.updatePosition(0L, 0);
+
+            // Redis에 업데이트된 토큰 저장
+            redisTemplate.opsForValue().set(QUEUE_TOKEN_KEY + token, queueToken,
+                    tokenExpireMinutes, TimeUnit.MINUTES);
+
+            log.info("사용자 토큰 활성화 완료: userId={}, token={}", userId, token);
+        }
     }
 
     /**
      * 토큰 만료 처리
      */
-    private void expireToken(String token) {
+    private void expireToken(String token, String userId) {
+        // 토큰 삭제
         redisTemplate.delete(QUEUE_TOKEN_KEY + token);
-        log.info("토큰 만료 처리 완료: token={}", token);
+
+        // 사용자-토큰 매핑 삭제
+        redisTemplate.delete(USER_TOKEN_MAPPING_KEY + userId);
+
+        // 활성 사용자에서 제거
+        redisTemplate.opsForSet().remove(ACTIVE_USERS_KEY, userId);
+        redisTemplate.delete(USER_ACTIVE_KEY_PREFIX + userId);
+
+        log.info("토큰 만료 처리 완료: token={}, userId={}", token, userId);
+    }
+
+    /**
+     * 분산 락 획득
+     */
+    private boolean acquireLock(String lockKey, String lockValue, int timeoutSeconds) {
+        Boolean result = redisTemplate.opsForValue().setIfAbsent(
+                lockKey,
+                lockValue,
+                timeoutSeconds,
+                TimeUnit.SECONDS
+        );
+        return Boolean.TRUE.equals(result);
+    }
+
+    /**
+     * 분산 락 해제
+     */
+    private void releaseLock(String lockKey, String lockValue) {
+        String script =
+                "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+                        "    return redis.call('del', KEYS[1]) " +
+                        "else " +
+                        "    return 0 " +
+                        "end";
+
+        redisTemplate.execute(
+                RedisScript.of(script, Long.class),
+                Collections.singletonList(lockKey),
+                lockValue
+        );
     }
 }
