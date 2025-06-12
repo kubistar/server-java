@@ -21,12 +21,12 @@ spring:
       connection-timeout: 10000
       max-lifetime: 60000
 
-  # 🔴 Redis 설정 (대기열 시스템용)
+  # 🔴 Redis 설정 (대기열 시스템)
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:""}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD:}
       timeout: 2000ms
       lettuce:
         pool:
@@ -43,7 +43,7 @@ spring:
     generate-ddl: false
     show-sql: true
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update
     properties:
       hibernate:
         timezone.default_storage: NORMALIZE_UTC
