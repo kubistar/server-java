@@ -121,7 +121,10 @@ public class ReservationService implements ReserveSeatUseCase {
     @Override
     public void releaseExpiredReservations() {
         // 만료된 예약 조회
-        List<Reservation> expiredReservations = reservationRepository.findExpiredReservations();
+        List<Reservation> expiredReservations = reservationRepository.findByStatusAndExpiresAtBefore(
+                Reservation.ReservationStatus.TEMPORARILY_ASSIGNED,
+                LocalDateTime.now()
+        );
 
         for (Reservation reservation : expiredReservations) {
             // 예약 만료 처리

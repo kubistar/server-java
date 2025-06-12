@@ -19,6 +19,8 @@ public interface SeatJpaRepository extends JpaRepository<Seat, Long> {
 
     List<Seat> findByConcertId(Long concertId);
 
-    @Query("SELECT s FROM Seat s WHERE s.status = 'TEMPORARILY_ASSIGNED' AND s.assignedUntil < :now")
-    List<Seat> findExpiredTemporaryAssignments(@Param("now") LocalDateTime now);
+    List<Seat> findByStatusAndAssignedUntilBefore(
+            Seat.SeatStatus status,
+            LocalDateTime assignedUntil
+    );
 }

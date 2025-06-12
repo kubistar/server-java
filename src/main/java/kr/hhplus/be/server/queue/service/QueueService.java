@@ -1,5 +1,7 @@
 package kr.hhplus.be.server.queue.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import kr.hhplus.be.server.queue.domain.QueueStatus;
 import kr.hhplus.be.server.queue.domain.QueueToken;
 import kr.hhplus.be.server.queue.exception.QueueTokenExpiredException;
@@ -171,17 +173,16 @@ public class QueueService {
      * 기존 토큰 찾기
      */
     private QueueToken findExistingToken(String userId) {
-        // 사용자-토큰 매핑에서 토큰 조회
-        String existingToken = (String) redisTemplate.opsForValue().get(USER_TOKEN_MAPPING_KEY + userId);
+        String userTokenKey = USER_TOKEN_MAPPING_KEY + userId;
+        String existingToken = (String) redisTemplate.opsForValue().get(userTokenKey);
 
         if (existingToken != null) {
-            // 토큰 정보 조회
-            QueueToken tokenInfo = (QueueToken) redisTemplate.opsForValue().get(QUEUE_TOKEN_KEY + existingToken);
-            return tokenInfo;
+            return safeGetFromRedis(QUEUE_TOKEN_KEY + existingToken, QueueToken.class);
         }
 
         return null;
     }
+
 
     /**
      * 대기열 상태 조회
@@ -383,5 +384,34 @@ public class QueueService {
                 Collections.singletonList(lockKey),
                 lockValue
         );
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T safeGetFromRedis(String key, Class<T> type) {
+        Object obj = redisTemplate.opsForValue().get(key);
+
+        if (obj == null) {
+            return null;
+        }
+
+        if (type.isInstance(obj)) {
+            return type.cast(obj);
+        }
+
+        // LinkedHashMap인 경우 변환 시도
+        if (obj instanceof LinkedHashMap) {
+            try {
+                ObjectMapper objectMapper = new ObjectMapper();
+                objectMapper.registerModule(new JavaTimeModule());
+
+                String json = objectMapper.writeValueAsString(obj);
+                return objectMapper.readValue(json, type);
+            } catch (Exception e) {
+                log.error("객체 변환 실패: {} to {}", obj.getClass(), type, e);
+                return null;
+            }
+        }
+
+        return null;
     }
 }

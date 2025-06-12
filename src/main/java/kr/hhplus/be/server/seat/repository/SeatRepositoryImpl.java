@@ -38,7 +38,9 @@ public class SeatRepositoryImpl implements SeatRepository {
 
     @Override
     public List<Seat> findExpiredTemporaryAssignments() {
-        return seatJpaRepository.findExpiredTemporaryAssignments(LocalDateTime.now());
+        return seatJpaRepository.findByStatusAndAssignedUntilBefore(
+                Seat.SeatStatus.TEMPORARILY_ASSIGNED, LocalDateTime.now()
+        );
     }
 
     @Override

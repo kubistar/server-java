@@ -54,8 +54,11 @@ class SeatRepositoryImplTest {
         Seat expiredSeat2 = new Seat(2L, 1L, 16, 50000);
         List<Seat> expiredSeats = Arrays.asList(expiredSeat1, expiredSeat2);
 
-        given(seatJpaRepository.findExpiredTemporaryAssignments(any(LocalDateTime.class)))
-                .willReturn(expiredSeats);
+        // 새로운 메서드에 맞는 Mock 설정
+        given(seatJpaRepository.findByStatusAndAssignedUntilBefore(
+                eq(Seat.SeatStatus.TEMPORARILY_ASSIGNED),
+                any(LocalDateTime.class)
+        )).willReturn(expiredSeats);
 
         // when
         List<Seat> result = seatRepository.findExpiredTemporaryAssignments();
@@ -63,5 +66,11 @@ class SeatRepositoryImplTest {
         // then
         assertThat(result).hasSize(2);
         assertThat(result).containsExactlyInAnyOrder(expiredSeat1, expiredSeat2);
+
+        // Mock 호출 검증
+        verify(seatJpaRepository).findByStatusAndAssignedUntilBefore(
+                eq(Seat.SeatStatus.TEMPORARILY_ASSIGNED),
+                any(LocalDateTime.class)
+        );
     }
 }

@@ -20,6 +20,8 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.*;
@@ -74,6 +76,16 @@ class QueueServiceTest {
         String userId = "user-123";
         log.info("테스트 사용자 ID: {}", userId);
 
+        // 🔥 분산 락 획득 성공 Mock 추가
+        when(valueOperations.setIfAbsent(eq("queue:lock"), anyString(), eq(5L), eq(TimeUnit.SECONDS)))
+                .thenReturn(true);
+
+        // 🔥 기존 토큰 없음 Mock 추가
+        when(valueOperations.get(startsWith("queue:user:token:"))).thenReturn(null);
+
+        // 🔥 활성 사용자 목록이 비어있음 (만료된 사용자 정리용)
+        when(setOperations.members("queue:active")).thenReturn(Collections.emptySet());
+
         // 현재 활성 사용자 수가 최대치 미만
         when(setOperations.size("queue:active")).thenReturn(50L);
         log.info("Mock 설정: 현재 활성 사용자 수 = 50 (최대 100 미만)");
@@ -108,7 +120,8 @@ class QueueServiceTest {
 
         // Redis 호출 검증
         verify(setOperations).add(eq("queue:active"), eq(userId));
-        verify(valueOperations).set(startsWith("queue:token:"), eq(result), eq(30L), eq(TimeUnit.MINUTES));
+        verify(valueOperations, times(3)).set(anyString(), any(), eq(30L), eq(TimeUnit.MINUTES));
+        // 토큰 저장 + 사용자-토큰 매핑 + 개별 활성 키 = 3개
         log.info("✓ Redis 호출 검증 통과");
 
         log.info("=== 테스트 완료: 즉시 활성화 토큰 발급 검증 통과 ===");
@@ -122,6 +135,16 @@ class QueueServiceTest {
 
         String userId = "user-456";
         log.info("테스트 사용자 ID: {}", userId);
+
+        // 🔥 분산 락 획득 성공 Mock 추가
+        when(valueOperations.setIfAbsent(eq("queue:lock"), anyString(), eq(5L), eq(TimeUnit.SECONDS)))
+                .thenReturn(true);
+
+        // 🔥 기존 토큰 없음 Mock 추가
+        when(valueOperations.get(startsWith("queue:user:token:"))).thenReturn(null);
+
+        // 🔥 활성 사용자 목록이 비어있음 (만료된 사용자 정리용)
+        when(setOperations.members("queue:active")).thenReturn(Collections.emptySet());
 
         // 현재 활성 사용자 수가 최대치
         when(setOperations.size("queue:active")).thenReturn(100L);
@@ -155,7 +178,8 @@ class QueueServiceTest {
 
         // Redis 호출 검증
         verify(zSetOperations).add(eq("queue:waiting"), eq(userId), anyDouble());
-        verify(valueOperations).set(startsWith("queue:token:"), eq(result), eq(30L), eq(TimeUnit.MINUTES));
+        verify(valueOperations, times(2)).set(anyString(), any(), eq(30L), eq(TimeUnit.MINUTES));
+        // 토큰 저장 + 사용자-토큰 매핑 = 2개
         log.info("✓ Redis 호출 검증 통과");
 
         log.info("=== 테스트 완료: 대기열 토큰 발급 검증 통과 ===");

@@ -14,6 +14,8 @@ public interface ReservationJpaRepository extends JpaRepository<Reservation, Str
 
     List<Reservation> findByUserId(String userId);
 
-    @Query("SELECT r FROM Reservation r WHERE r.status = 'TEMPORARILY_ASSIGNED' AND r.expiresAt < :now")
-    List<Reservation> findExpiredReservations(@Param("now") LocalDateTime now);
+    List<Reservation> findByStatusAndExpiresAtBefore(
+            Reservation.ReservationStatus status,
+            LocalDateTime expiresAt
+    );
 }
