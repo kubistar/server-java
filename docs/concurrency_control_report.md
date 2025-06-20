@@ -152,7 +152,7 @@ public boolean tryLock(String key, String value, int timeoutSeconds) {
 Success count: 3, Fail count: 7
 10개 스레드 동시 결제 소요시간: 1302ms
 평균 응답시간: 130ms per request
-처리량(TPS): 8
+- **스레드 처리율**: 8 requests/second
 최종 잔액: 10,000원, 예상 잔액: 10,000원
 동시성 제어 성공: 음수 잔액 방지 ✅
 ```
