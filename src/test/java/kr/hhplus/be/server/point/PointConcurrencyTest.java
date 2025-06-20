@@ -260,7 +260,7 @@ class PointConcurrencyTest {
         log.info("Success count: {}, Fail count: {}", successCount.get(), failCount.get());
         log.info("{}개 스레드 동시 결제 소요시간: {}ms", threadCount, duration);
         log.info("평균 응답시간: {}ms per request", duration / threadCount);
-        log.info("처리량(TPS): {}", Math.round((double) threadCount / duration * 1000));
+        log.info("스레드 처리율: {} requests/second: {}", Math.round((double) threadCount / duration * 1000));
         log.info("Results: {}", results);
 
 
