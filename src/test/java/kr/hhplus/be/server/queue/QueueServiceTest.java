@@ -57,6 +57,12 @@ class QueueServiceTest {
         when(redisTemplate.opsForSet()).thenReturn(setOperations);
         when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
 
+        // 🔥 분산 락 관련 공통 Mock 설정 추가
+        when(valueOperations.setIfAbsent(anyString(), anyString(), anyLong(), any(TimeUnit.class)))
+                .thenReturn(true);
+        when(redisTemplate.execute(any(), anyList(), anyString()))
+                .thenReturn(1L);
+
         queueService = new QueueService(redisTemplate);
 
         // 설정값 주입

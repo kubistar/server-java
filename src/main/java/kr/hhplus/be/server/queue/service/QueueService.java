@@ -83,6 +83,14 @@ public class QueueService {
         }
     }
 
+
+    /**
+     * 분산 락이 획득된 상태에서 대기열 토큰을 발급
+     * 활성 사용자 수를 확인하여 즉시 활성화하거나 대기열에 추가
+     *
+     * @param userId 토큰을 발급받을 사용자 ID
+     * @return 발급된 대기열 토큰 정보 (QueueToken)
+     */
     private QueueToken issueTokenWithLock(String userId) {
         // 새 토큰 생성
         String token = UUID.randomUUID().toString();
@@ -137,7 +145,12 @@ public class QueueService {
     }
 
     /**
-     * 활성 사용자 추가
+     * 활성 사용자를 개별 만료 시간과 함께 추가
+     * Redis Set에 사용자를 추가하고, 개별 사용자별 활성 상태 키로 만료시간을 관리
+     *
+     * @param userId 추가할 사용자의 고유 ID
+     * @param token 발급된 대기열 토큰
+     * @param expiresAt 토큰이 만료되는 시간
      */
     private void addActiveUserWithIndividualExpire(String userId, String token, LocalDateTime expiresAt) {
         // Set에 사용자 추가 (공통 Set은 expire 설정하지 않음)

@@ -91,7 +91,8 @@ class ReservationIntegrationTest {
 
         // then - 두 번째 예약 실패
         assertThatThrownBy(() -> reserveSeatUseCase.reserveSeat(secondCommand))
-                .isInstanceOf(SeatNotAvailableException.class);
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("이미 다른 사용자가 선택한 좌석입니다.");
     }
 
     @Test

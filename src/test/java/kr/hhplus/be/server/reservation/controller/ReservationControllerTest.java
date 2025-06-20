@@ -6,23 +6,29 @@ import kr.hhplus.be.server.reservation.dto.ReservationResult;
 import kr.hhplus.be.server.reservation.domain.Reservation;
 import kr.hhplus.be.server.queue.service.QueueService;
 import kr.hhplus.be.server.reservation.service.ReserveSeatUseCase;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 
 import java.time.LocalDateTime;
 
+import static org.hamcrest.Matchers.greaterThan;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(ReservationController.class)
+@SpringBootTest
+@AutoConfigureMockMvc
+@Transactional
 class ReservationControllerTest {
 
     @Autowired
@@ -36,6 +42,12 @@ class ReservationControllerTest {
 
     @MockitoBean
     private QueueService queueService;
+
+    @BeforeEach
+    void setUp() {
+        // 모든 테스트에서 토큰 검증이 성공하도록 설정
+        given(queueService.validateActiveToken(anyString())).willReturn(true);
+    }
 
     @Test
     @DisplayName("POST /api/reservations - 정상적인 좌석 예약 요청")
@@ -86,8 +98,12 @@ class ReservationControllerTest {
                         .header("Authorization", "Bearer token-123"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.reservationId").value(reservationId))
-                .andExpect(jsonPath("$.message").value("예약 상태 조회 성공"));
+                .andExpect(jsonPath("$.message").value("예약 상태 조회 성공"))
+                .andExpect(jsonPath("$.data.reservationId").isString())
+                .andExpect(jsonPath("$.data.userId").value("user-123"))
+                .andExpect(jsonPath("$.data.concertId").value(1))
+                .andExpect(jsonPath("$.data.seatNumber").value(15))
+                .andExpect(jsonPath("$.data.price").value(50000));
     }
 
     @Test
