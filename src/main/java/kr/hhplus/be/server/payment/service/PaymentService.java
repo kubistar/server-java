@@ -46,15 +46,20 @@ public class PaymentService implements PaymentUseCase {
         validateReservation(reservation, command.getUserId());
 
         // 2. 사용자 잔액 확인 및 차감 (비관적 락)
-        User user = userRepository.findByIdForUpdate(command.getUserId())
-                .orElseThrow(() -> new RuntimeException("사용자 정보를 찾을 수 없습니다."));
+        Long paymentAmount = reservation.getPrice().longValue();
+        int updatedRows = userRepository.deductBalanceWithCondition(command.getUserId(), paymentAmount);
 
-        if (!user.hasEnoughBalance(reservation.getPrice().longValue())) {
-            throw new InsufficientBalanceException(user.getBalance(), reservation.getPrice().longValue());
+        if (updatedRows == 0) {
+            // 차감 실패 = 잔액 부족 또는 사용자 없음
+            User user = userRepository.findById(command.getUserId())
+                    .orElseThrow(() -> new RuntimeException("사용자 정보를 찾을 수 없습니다."));
+
+            throw new InsufficientBalanceException(user.getBalance(), paymentAmount);
         }
 
-        user.deductBalance(reservation.getPrice().longValue());
-        userRepository.save(user);
+        // 차감 후 현재 잔액 조회 (거래 내역용)
+        User user = userRepository.findById(command.getUserId())
+                .orElseThrow(() -> new RuntimeException("사용자 정보를 찾을 수 없습니다."));
 
         // 3. 결제 정보 생성
         Payment payment = new Payment(
