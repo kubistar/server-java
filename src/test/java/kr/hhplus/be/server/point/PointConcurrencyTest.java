@@ -220,6 +220,9 @@ class PointConcurrencyTest {
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger failCount = new AtomicInteger(0);
 
+        // 시간 측정 시작
+        long startTime = System.currentTimeMillis();
+
         // when - 동시에 결제 시도
         List<CompletableFuture<String>> futures = reservations.stream()
                 .map(reservation -> CompletableFuture.supplyAsync(() -> {
@@ -247,9 +250,19 @@ class PointConcurrencyTest {
 
         executorService.shutdown();
 
+        // 시간 측정 끝
+        long endTime = System.currentTimeMillis();
+        long duration = endTime - startTime;
+
         // then - 결과 검증
+        // then - 결과 검증
+        log.info("=== 잔액 차감 동시성 테스트 결과 ===");
         log.info("Success count: {}, Fail count: {}", successCount.get(), failCount.get());
+        log.info("{}개 스레드 동시 결제 소요시간: {}ms", threadCount, duration);
+        log.info("평균 응답시간: {}ms per request", duration / threadCount);
+        log.info("처리량(TPS): {}", Math.round((double) threadCount / duration * 1000));
         log.info("Results: {}", results);
+
 
         User finalUser = userRepository.findById(userId).orElseThrow();
 
@@ -265,6 +278,7 @@ class PointConcurrencyTest {
         assertThat(finalUser.getBalance()).isEqualTo(expectedRemainingBalance);
 
         log.info("최종 잔액: {}원, 예상 잔액: {}원", finalUser.getBalance(), expectedRemainingBalance);
-
+        log.info("동시성 제어 성공: 음수 잔액 방지 ✅");
+        log.info("=== 테스트 완료 ===");
     }
 }
