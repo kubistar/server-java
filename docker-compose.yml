@@ -4,14 +4,14 @@ services:
     image: mysql:8.0
     container_name: hhplus-mysql
     ports:
-      - "3306:3306"
+      - "3307:3306"
     environment:
       - MYSQL_ROOT_PASSWORD=root
       - MYSQL_USER=application
       - MYSQL_PASSWORD=application
       - MYSQL_DATABASE=hhplus
     volumes:
-      - mysql_data:/var/lib/mysql  # Named volume 사용 (권장)
+      - mysql_data:/var/lSELECT user, host, plugin FROM mysql.user WHERE user = 'application';ib/mysql  # Named volume 사용 (권장)
     command: --default-authentication-plugin=mysql_native_password
     restart: unless-stopped
 
