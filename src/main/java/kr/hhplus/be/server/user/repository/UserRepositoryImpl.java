@@ -22,14 +22,6 @@ public class UserRepositoryImpl implements UserRepository {
         return userJpaRepository.save(user);
     }
 
-    @Override
-    public Optional<User> findByIdForUpdate(String userId) {
-        return userJpaRepository.findByIdForUpdate(userId);
-    }
 
-    @Override
-    public int deductBalanceWithCondition(String userId, Long amount) {
-        return userJpaRepository.deductBalanceWithCondition(userId, amount);
-    }
 
 }

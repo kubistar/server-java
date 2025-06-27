@@ -7,19 +7,18 @@ import kr.hhplus.be.server.reservation.exception.ReservationNotFoundException;
 import kr.hhplus.be.server.payment.exception.InsufficientBalanceException;
 import kr.hhplus.be.server.payment.domain.Payment;
 import kr.hhplus.be.server.payment.repository.PaymentRepository;
-import kr.hhplus.be.server.point.repository.BalanceTransactionRepository;
+import kr.hhplus.be.server.balance.service.BalanceService;
+import kr.hhplus.be.server.balance.domain.Balance;
 import kr.hhplus.be.server.reservation.domain.Reservation;
 import kr.hhplus.be.server.reservation.repository.ReservationRepository;
 import kr.hhplus.be.server.seat.domain.Seat;
 import kr.hhplus.be.server.seat.repository.SeatRepository;
-import kr.hhplus.be.server.user.repository.UserRepository;
-import kr.hhplus.be.server.point.domain.BalanceTransaction;
-import kr.hhplus.be.server.user.domain.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Service
@@ -28,10 +27,9 @@ import java.time.LocalDateTime;
 public class PaymentService implements PaymentUseCase {
 
     private final PaymentRepository paymentRepository;
-    private final UserRepository userRepository;
+    private final BalanceService balanceService;  // UserRepository → BalanceService 변경
     private final ReservationRepository reservationRepository;
     private final SeatRepository seatRepository;
-    private final BalanceTransactionRepository balanceTransactionRepository;
 
     @Override
     @Transactional
@@ -45,52 +43,43 @@ public class PaymentService implements PaymentUseCase {
 
         validateReservation(reservation, command.getUserId());
 
-        // 2. 사용자 잔액 확인 및 차감 (비관적 락)
-        Long paymentAmount = reservation.getPrice().longValue();
-        int updatedRows = userRepository.deductBalanceWithCondition(command.getUserId(), paymentAmount);
+        // 2. 결제 금액 설정
+        BigDecimal paymentAmount = reservation.getPrice();
 
-        if (updatedRows == 0) {
-            // 차감 실패 = 잔액 부족 또는 사용자 없음
-            User user = userRepository.findById(command.getUserId())
-                    .orElseThrow(() -> new RuntimeException("사용자 정보를 찾을 수 없습니다."));
-
-            throw new InsufficientBalanceException(user.getBalance(), paymentAmount);
+        // 3. 잔액 확인
+        if (!balanceService.hasEnoughBalance(command.getUserId(), paymentAmount)) {
+            BigDecimal currentBalance = balanceService.getBalanceAmount(command.getUserId());
+            throw new InsufficientBalanceException(currentBalance.longValue(), paymentAmount.longValue());
         }
 
-        // 차감 후 현재 잔액 조회 (거래 내역용)
-        User user = userRepository.findById(command.getUserId())
-                .orElseThrow(() -> new RuntimeException("사용자 정보를 찾을 수 없습니다."));
+        // 4. 잔액 차감 (비관적 락 사용)
+        Balance updatedBalance = balanceService.deductBalance(
+                command.getUserId(),
+                paymentAmount,
+                command.getReservationId()
+        );
 
-        // 3. 결제 정보 생성
+        // 5. 결제 정보 생성
         Payment payment = new Payment(
                 command.getReservationId(),
                 command.getUserId(),
-                reservation.getPrice().longValue(),
+                paymentAmount,  // BigDecimal 그대로 사용
                 Payment.PaymentMethod.BALANCE
         );
         paymentRepository.save(payment);
 
-        // 4. 예약 확정
+        // 6. 예약 확정
         reservation.confirm(LocalDateTime.now());
         reservationRepository.save(reservation);
 
-        // 5. 좌석 확정 배정
+        // 7. 좌석 확정 배정
         Seat seat = seatRepository.findById(reservation.getSeatId())
                 .orElseThrow(() -> new RuntimeException("좌석 정보를 찾을 수 없습니다."));
         seat.confirmReservation(LocalDateTime.now());
         seatRepository.save(seat);
 
-        // 6. 거래 내역 저장
-        BalanceTransaction transaction = BalanceTransaction.payment(
-                command.getUserId(),
-                reservation.getPrice().longValue(),
-                user.getBalance(),
-                command.getReservationId()
-        );
-        balanceTransactionRepository.save(transaction);
-
         log.info("결제 처리 완료: paymentId={}, amount={}, balanceAfter={}",
-                payment.getPaymentId(), payment.getAmount(), user.getBalance());
+                payment.getPaymentId(), payment.getAmount(), updatedBalance.getAmount());
 
         return new PaymentResult(payment);
     }
@@ -104,6 +93,49 @@ public class PaymentService implements PaymentUseCase {
                 .orElseThrow(() -> new PaymentNotFoundException(paymentId));
 
         return new PaymentResult(payment);
+    }
+
+    /**
+     * 환불 처리
+     */
+    @Transactional
+    public PaymentResult refundPayment(String paymentId, String reason) {
+        log.info("환불 처리 시작: paymentId={}, reason={}", paymentId, reason);
+
+        // 1. 결제 정보 조회
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new PaymentNotFoundException(paymentId));
+
+        if (!payment.isCompleted()) {
+            throw new RuntimeException("완료된 결제만 환불 가능합니다.");
+        }
+
+        // 2. 환불 금액 추가
+        balanceService.refundBalance(payment.getUserId(), payment.getAmount(), reason);
+
+        // 3. 결제 상태 변경
+        payment.markAsCancelled();
+        paymentRepository.save(payment);
+
+        log.info("환불 처리 완료: paymentId={}, amount={}", paymentId, payment.getAmount());
+
+        return new PaymentResult(payment);
+    }
+
+    /**
+     * 사용자별 결제 내역 조회
+     */
+    @Transactional(readOnly = true)
+    public PaymentResult getUserPaymentHistory(String userId) {
+        // PaymentRepository에 사용자별 조회 메서드가 있다면 사용
+        // 또는 페이징 처리된 결과 반환
+
+        log.debug("사용자 결제 내역 조회: userId={}", userId);
+
+        // 구현 필요 시 PaymentRepository에 메서드 추가
+        // List<Payment> payments = paymentRepository.findByUserIdOrderByCreatedAtDesc(userId);
+
+        return null; // 실제 구현 시 적절한 결과 반환
     }
 
     private void validateReservation(Reservation reservation, String userId) {

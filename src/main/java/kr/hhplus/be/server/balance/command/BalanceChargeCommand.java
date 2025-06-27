@@ -1,4 +1,4 @@
-package kr.hhplus.be.server.point.command;
+package kr.hhplus.be.server.balance.command;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

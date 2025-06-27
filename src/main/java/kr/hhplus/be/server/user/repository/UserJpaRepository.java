@@ -12,12 +12,5 @@ import java.util.Optional;
 
 public interface UserJpaRepository extends JpaRepository<User, String> {
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT u FROM User u WHERE u.userId = :userId")
-    Optional<User> findByIdForUpdate(@Param("userId") String userId);
 
-    @Modifying
-    @Query("UPDATE User u SET u.balance = u.balance - :amount " +
-            "WHERE u.userId = :userId AND u.balance >= :amount")
-    int deductBalanceWithCondition(@Param("userId") String userId, @Param("amount") Long amount);
 }

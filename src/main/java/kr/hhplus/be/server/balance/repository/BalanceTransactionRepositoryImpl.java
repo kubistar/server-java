@@ -1,6 +1,6 @@
-package kr.hhplus.be.server.point.repository;
+package kr.hhplus.be.server.balance.repository;
 
-import kr.hhplus.be.server.point.domain.BalanceTransaction;
+import kr.hhplus.be.server.balance.domain.BalanceTransaction;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 

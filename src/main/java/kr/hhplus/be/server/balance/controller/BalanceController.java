@@ -1,9 +1,9 @@
-package kr.hhplus.be.server.point.controller;
+package kr.hhplus.be.server.balance.controller;
 
-import kr.hhplus.be.server.point.command.BalanceChargeCommand;
-import kr.hhplus.be.server.point.dto.BalanceChargeRequestDto;
-import kr.hhplus.be.server.point.dto.BalanceResult;
-import kr.hhplus.be.server.point.service.BalanceUseCase;
+import kr.hhplus.be.server.balance.command.BalanceChargeCommand;
+import kr.hhplus.be.server.balance.dto.BalanceChargeRequestDto;
+import kr.hhplus.be.server.balance.dto.BalanceResult;
+import kr.hhplus.be.server.balance.service.BalanceUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

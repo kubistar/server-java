@@ -1,4 +1,4 @@
-package kr.hhplus.be.server.point.dto;
+package kr.hhplus.be.server.balance.dto;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
