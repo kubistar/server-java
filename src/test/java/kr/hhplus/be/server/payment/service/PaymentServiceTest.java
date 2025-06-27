@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.*;
 
@@ -134,16 +135,24 @@ class PaymentServiceTest {
 
     @Test
     @DisplayName("만료된 예약에 대한 결제 시 예외가 발생한다")
-    void whenProcessPaymentForExpiredReservation_ThenShouldThrowException() {
+    void whenProcessPaymentForExpiredReservation_ThenShouldThrowException() throws Exception {
         // given
-        Reservation expiredReservation = new Reservation(
+        // 1. 정상적인 예약을 생성 (아주 짧은 만료 시간으로)
+        Reservation reservation = new Reservation(
                 "user-123",
                 1L,
                 1L,
-                BigDecimal.valueOf(50000), // int → BigDecimal
-                LocalDateTime.now().minusMinutes(1)
+                BigDecimal.valueOf(50000),
+                LocalDateTime.now().plusNanos(1000000) // 1밀리초 = 1,000,000 나노초
         );
-        given(reservationRepository.findById("res-123")).willReturn(Optional.of(expiredReservation));
+
+        // 2. 잠시 대기해서 만료되도록 함
+        Thread.sleep(10); // 10밀리초 대기
+
+        // 3. 이제 예약이 만료되었는지 확인
+        assertTrue(reservation.isExpired());
+
+        given(reservationRepository.findById("res-123")).willReturn(Optional.of(reservation));
 
         // when & then
         assertThatThrownBy(() -> paymentService.processPayment(command))

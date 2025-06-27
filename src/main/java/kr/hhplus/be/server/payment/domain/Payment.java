@@ -25,7 +25,7 @@ public class Payment {
     private String userId;
 
     @Column(name = "amount", nullable = false, precision = 10, scale = 2)
-    private BigDecimal amount; // Long → BigDecimal로 변경
+    private BigDecimal amount;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -39,14 +39,18 @@ public class Payment {
     private LocalDateTime createdAt;
 
     public enum PaymentStatus {
-        COMPLETED, FAILED, CANCELLED
+        PENDING,      // 결제 대기
+        COMPLETED,    // 결제 완료
+        FAILED,       // 결제 실패
+        CANCELLED,    // 결제 취소
+        REFUNDED      // 환불 완료
     }
 
     public enum PaymentMethod {
-        BALANCE
+        BALANCE, CARD
     }
 
-    // 생성자
+    // 기본 생성자 - PENDING 상태로 시작
     public Payment(String reservationId, String userId, BigDecimal amount, PaymentMethod paymentMethod) {
         validatePaymentData(reservationId, userId, amount, paymentMethod);
 
@@ -55,24 +59,11 @@ public class Payment {
         this.userId = userId;
         this.amount = amount;
         this.paymentMethod = paymentMethod;
-        this.status = PaymentStatus.COMPLETED; // 생성 즉시 완료 상태
+        this.status = PaymentStatus.PENDING; // 기본은 PENDING
         this.createdAt = LocalDateTime.now();
     }
 
-    // 테스트용 생성자
-    public Payment(String paymentId, String reservationId, String userId, BigDecimal amount, PaymentMethod paymentMethod) {
-        validatePaymentData(reservationId, userId, amount, paymentMethod);
-
-        this.paymentId = paymentId;
-        this.reservationId = reservationId;
-        this.userId = userId;
-        this.amount = amount;
-        this.paymentMethod = paymentMethod;
-        this.status = PaymentStatus.COMPLETED;
-        this.createdAt = LocalDateTime.now();
-    }
-
-    // 실패 상태로 결제 생성 (실패 케이스용)
+    // 실패 상태로 결제 생성 (팩토리 메서드)
     public static Payment createFailedPayment(String reservationId, String userId, BigDecimal amount, PaymentMethod paymentMethod) {
         Payment payment = new Payment();
         payment.paymentId = UUID.randomUUID().toString();
@@ -85,19 +76,45 @@ public class Payment {
         return payment;
     }
 
-    // 비즈니스 로직 메소드
+    // 상태 전이 메서드들
+    public void markAsCompleted() {
+        if (this.status != PaymentStatus.PENDING) {
+            throw new IllegalStateException("대기 중인 결제만 완료 처리할 수 있습니다. 현재 상태: " + this.status);
+        }
+        this.status = PaymentStatus.COMPLETED;
+    }
+
     public void markAsFailed() {
-        if (this.status == PaymentStatus.COMPLETED) {
-            throw new IllegalStateException("완료된 결제는 실패 처리할 수 없습니다.");
+        if (this.status != PaymentStatus.PENDING) {
+            throw new IllegalStateException("대기 중인 결제만 실패 처리할 수 있습니다. 현재 상태: " + this.status);
         }
         this.status = PaymentStatus.FAILED;
     }
 
-    public void markAsCancelled() {
-        if (this.status == PaymentStatus.FAILED) {
-            throw new IllegalStateException("실패한 결제는 취소할 수 없습니다.");
+    public void cancel() {
+        if (this.status != PaymentStatus.PENDING) {
+            throw new IllegalStateException("대기 중인 결제만 취소할 수 있습니다. 현재 상태: " + this.status);
         }
         this.status = PaymentStatus.CANCELLED;
+    }
+
+    public void refund() {
+        if (this.status != PaymentStatus.COMPLETED) {
+            throw new IllegalStateException("완료된 결제만 환불할 수 있습니다. 현재 상태: " + this.status);
+        }
+        this.status = PaymentStatus.REFUNDED;
+    }
+
+    public void retry() {
+        if (this.status != PaymentStatus.FAILED) {
+            throw new IllegalStateException("실패한 결제만 재시도할 수 있습니다. 현재 상태: " + this.status);
+        }
+        this.status = PaymentStatus.PENDING;
+    }
+
+    // 상태 확인 메서드들
+    public boolean isPending() {
+        return this.status == PaymentStatus.PENDING;
     }
 
     public boolean isCompleted() {
@@ -112,8 +129,18 @@ public class Payment {
         return this.status == PaymentStatus.CANCELLED;
     }
 
+    public boolean isRefunded() {
+        return this.status == PaymentStatus.REFUNDED;
+    }
+
     public boolean isSuccessful() {
         return this.status == PaymentStatus.COMPLETED;
+    }
+
+    public boolean isFinalState() {
+        return this.status == PaymentStatus.COMPLETED ||
+                this.status == PaymentStatus.CANCELLED ||
+                this.status == PaymentStatus.REFUNDED;
     }
 
     // 금액 관련 메서드
@@ -130,21 +157,12 @@ public class Payment {
         return paymentMethod == PaymentMethod.BALANCE;
     }
 
+    public boolean isCardPayment() {
+        return paymentMethod == PaymentMethod.CARD;
+    }
+
     // 유효성 검증
     private void validatePaymentData(String reservationId, String userId, BigDecimal amount, PaymentMethod paymentMethod) {
-        if (reservationId == null || reservationId.trim().isEmpty()) {
-            throw new IllegalArgumentException("예약 ID는 필수입니다.");
-        }
-        if (reservationId.length() > 36) {
-            throw new IllegalArgumentException("예약 ID는 36자를 초과할 수 없습니다.");
-        }
-
-        if (userId == null || userId.trim().isEmpty()) {
-            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
-        }
-        if (userId.length() > 50) {
-            throw new IllegalArgumentException("사용자 ID는 50자를 초과할 수 없습니다.");
-        }
 
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("결제 금액은 0보다 커야 합니다.");

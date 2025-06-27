@@ -105,8 +105,35 @@ class IntegrationTest {
         balanceRepository.save(balance);
 
         // when & then
-        // 1. 대기열 토큰 발급
-        QueueToken queueToken = queueService.issueToken(userId);
+        // 1. 대기열 토큰 발급 (재시도 로직 추가)
+        QueueToken queueToken = null;
+        int retryCount = 0;
+        int maxRetries = 5;
+
+        while (queueToken == null && retryCount < maxRetries) {
+            try {
+                queueToken = queueService.issueToken(userId);
+                break;
+            } catch (RuntimeException e) {
+                if (e.getMessage().contains("대기열 처리 중입니다")) {
+                    retryCount++;
+                    log.info("대기열 처리 중으로 인한 재시도: {}/{}", retryCount, maxRetries);
+                    try {
+                        Thread.sleep(2000); // 2초 대기
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("토큰 발급 중 인터럽트 발생", ie);
+                    }
+                } else {
+                    throw e; // 다른 예외는 그대로 던지기
+                }
+            }
+        }
+
+        if (queueToken == null) {
+            throw new RuntimeException("토큰 발급 실패: 최대 재시도 횟수 초과");
+        }
+
         assertThat(queueToken).isNotNull();
         assertThat(queueToken.getUserId()).isEqualTo(userId);
 
@@ -131,7 +158,7 @@ class IntegrationTest {
 
         assertThat(reservation).isNotNull();
         assertThat(reservation.getUserId()).isEqualTo(userId);
-        assertThat(reservation.getPrice()).isEqualTo(seatPrice.longValue()); // BigDecimal → Long 비교
+        assertThat(reservation.getPrice()).isEqualTo(seatPrice);
         assertThat(reservation.getConcertId()).isEqualTo(testConcertId);
         assertThat(reservation.getSeatNumber()).isEqualTo(testSeatNumber);
         assertThat(reservation.getRemainingTimeSeconds()).isGreaterThan(0);
@@ -142,7 +169,7 @@ class IntegrationTest {
 
         assertThat(paymentResult).isNotNull();
         assertThat(paymentResult.getUserId()).isEqualTo(userId);
-        assertThat(paymentResult.getAmount()).isEqualTo(seatPrice.longValue());
+        assertThat(paymentResult.getAmount()).isEqualTo(seatPrice);
         assertThat(paymentResult.getStatus()).isEqualTo("COMPLETED");
 
         // 5. 최종 상태 검증

@@ -102,4 +102,14 @@ public class Seat {
         this.assignedUntil = null;
     }
 
+    public void releaseReservation() {
+        if (!isReserved()) {
+            throw new IllegalStateException("예약 상태가 아닙니다.");
+        }
+        this.status = SeatStatus.AVAILABLE;
+        this.assignedUserId = null;
+        this.assignedUntil = null;
+        this.reservedAt = null;
+    }
+
 }
