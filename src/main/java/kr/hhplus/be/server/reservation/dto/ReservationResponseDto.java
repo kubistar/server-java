@@ -2,6 +2,7 @@ package kr.hhplus.be.server.reservation.dto;
 
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Getter
@@ -11,7 +12,7 @@ public class ReservationResponseDto {
     private Long concertId;
     private Integer seatNumber;
     private String userId;
-    private Integer price;
+    private BigDecimal price; // Integer → BigDecimal 변경
     private LocalDateTime expiresAt;
     private Long remainingTimeSeconds;
 
@@ -22,12 +23,10 @@ public class ReservationResponseDto {
         dto.concertId = result.getConcertId();
         dto.seatNumber = result.getSeatNumber();
         dto.userId = result.getUserId();
-        dto.price = result.getPrice();
+        dto.price = result.getPrice(); // BigDecimal 그대로 사용
         dto.expiresAt = result.getExpiresAt();
         dto.remainingTimeSeconds = result.getRemainingTimeSeconds();
         return dto;
     }
-
-    // Getter 메소드들
 
 }

@@ -1,38 +1,52 @@
 package kr.hhplus.be.server.seat.domain;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@Getter
 @Entity
+@Table(name = "seats")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Seat {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "seat_id")
     private Long seatId;
+
+    @Column(name = "concert_id", nullable = false)
     private Long concertId;
+
+    @Column(name = "seat_number", nullable = false)
     private Integer seatNumber;
-    private Integer price;
+
+    @Column(name = "price", nullable = false, precision = 10, scale = 2)
+    private BigDecimal price; // Integer → BigDecimal로 변경
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
     private SeatStatus status;
+
+    @Column(name = "assigned_user_id")
     private String assignedUserId;
+
+    @Column(name = "assigned_until")
     private LocalDateTime assignedUntil;
+
+    @Column(name = "reserved_at")
     private LocalDateTime reservedAt;
 
     public enum SeatStatus {
         AVAILABLE, TEMPORARILY_ASSIGNED, RESERVED
     }
 
-    protected Seat() {
-        // JPA에서 사용할 기본 생성자
-    }
-
     // 생성자
-    public Seat(Long seatId, Long concertId, Integer seatNumber, Integer price) {
-        this.seatId = seatId;
+    public Seat(Long concertId, Integer seatNumber, BigDecimal price) {
         this.concertId = concertId;
         this.seatNumber = seatNumber;
         this.price = price;
@@ -87,6 +101,5 @@ public class Seat {
         this.assignedUserId = null;
         this.assignedUntil = null;
     }
-
 
 }
