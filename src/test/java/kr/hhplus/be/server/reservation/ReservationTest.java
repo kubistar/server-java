@@ -3,6 +3,7 @@ package kr.hhplus.be.server.reservation;
 import kr.hhplus.be.server.reservation.domain.Reservation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.*;
 
@@ -15,7 +16,7 @@ class ReservationTest {
         String userId = "user-123";
         Long concertId = 1L;
         Long seatId = 1L;
-        Integer price = 50000;
+        BigDecimal price = BigDecimal.valueOf(50000);
         LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(5);
 
         // when
@@ -35,7 +36,7 @@ class ReservationTest {
     @DisplayName("임시 배정 상태의 예약을 확정하면 상태가 CONFIRMED로 변경된다")
     void whenConfirmTemporarilyAssignedReservation_ThenStatusShouldBeConfirmed() {
         // given
-        Reservation reservation = new Reservation("user-123", 1L, 1L, 50000, LocalDateTime.now().plusMinutes(5));
+        Reservation reservation = new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000), LocalDateTime.now().plusMinutes(5));
         LocalDateTime confirmedAt = LocalDateTime.now();
 
         // when
@@ -51,7 +52,7 @@ class ReservationTest {
     void whenConfirmExpiredReservation_ThenShouldThrowException() {
         // given
         LocalDateTime pastTime = LocalDateTime.now().minusMinutes(1);
-        Reservation reservation = new Reservation("user-123", 1L, 1L, 50000, pastTime);
+        Reservation reservation = new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000), pastTime);
 
         // when & then
         assertThatThrownBy(() -> reservation.confirm(LocalDateTime.now()))
@@ -63,7 +64,7 @@ class ReservationTest {
     @DisplayName("임시 배정 상태의 예약을 취소하면 상태가 CANCELLED로 변경된다")
     void whenCancelTemporarilyAssignedReservation_ThenStatusShouldBeCancelled() {
         // given
-        Reservation reservation = new Reservation("user-123", 1L, 1L, 50000, LocalDateTime.now().plusMinutes(5));
+        Reservation reservation = new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000), LocalDateTime.now().plusMinutes(5));
 
         // when
         reservation.cancel();
@@ -77,7 +78,7 @@ class ReservationTest {
     void whenCalculateRemainingTime_ThenShouldReturnCorrectSeconds() {
         // given
         LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(300); // 5분 후
-        Reservation reservation = new Reservation("user-123", 1L, 1L, 50000, expiresAt);
+        Reservation reservation = new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000), expiresAt);
 
         // when
         long remainingTime = reservation.getRemainingTimeSeconds();
@@ -91,7 +92,7 @@ class ReservationTest {
     void whenReservationExpired_ThenRemainingTimeShouldBeZero() {
         // given
         LocalDateTime pastTime = LocalDateTime.now().minusMinutes(1);
-        Reservation reservation = new Reservation("user-123", 1L, 1L, 50000, pastTime);
+        Reservation reservation = new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000), pastTime);
 
         // when
         long remainingTime = reservation.getRemainingTimeSeconds();

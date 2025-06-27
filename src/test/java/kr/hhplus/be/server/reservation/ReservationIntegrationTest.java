@@ -16,8 +16,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
-
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -38,11 +38,12 @@ class ReservationIntegrationTest {
     private Seat testSeat;
     private Long concertId = 1L;
     private Integer seatNumber = 15;
+    private BigDecimal seatPrice = BigDecimal.valueOf(50000);
 
     @BeforeEach
     void setUp() {
         // 테스트용 좌석 생성
-        testSeat = new Seat(null, concertId, seatNumber, 50000);
+        testSeat = new Seat(concertId, seatNumber, seatPrice);
         testSeat = seatJpaRepository.save(testSeat);
     }
 
@@ -122,7 +123,7 @@ class ReservationIntegrationTest {
     void expiredReservationRelease_ShouldWork() {
         // given - 과거 시간으로 만료된 예약 생성
         Reservation expiredReservation = new Reservation(
-                "user-123", concertId, testSeat.getSeatId(), 50000,
+                "user-123", concertId, testSeat.getSeatId(), seatPrice,
                 LocalDateTime.now().minusMinutes(1) // 1분 전에 만료
         );
         reservationJpaRepository.save(expiredReservation);

@@ -14,6 +14,8 @@ import kr.hhplus.be.server.seat.domain.Seat;
 import kr.hhplus.be.server.seat.repository.SeatRepository;
 import kr.hhplus.be.server.user.domain.User;
 import kr.hhplus.be.server.user.repository.UserRepository;
+import kr.hhplus.be.server.balance.domain.Balance; // 추가
+import kr.hhplus.be.server.balance.repository.BalanceRepository; // 추가
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal; // 추가
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,6 +58,9 @@ class PointConcurrencyTest {
     private UserRepository userRepository;
 
     @Autowired
+    private BalanceRepository balanceRepository; // 추가
+
+    @Autowired
     private SeatRepository seatRepository;
 
     @Autowired
@@ -64,14 +70,14 @@ class PointConcurrencyTest {
 
     private Long testConcertId = 1L;
     private Integer baseSeatNumber = 200; // 다른 테스트와 겹치지 않게
-    private Integer seatPrice = 50000;
+    private BigDecimal seatPrice = BigDecimal.valueOf(50000); // Integer → BigDecimal
 
     @BeforeEach
     @Transactional
     void setUp() {
         // 테스트용 좌석들 미리 생성 (동시성 테스트용)
         for (int i = 0; i < 10; i++) {
-            Seat testSeat = new Seat(null, testConcertId, baseSeatNumber + i, seatPrice);
+            Seat testSeat = new Seat(testConcertId, baseSeatNumber + i, seatPrice); // null 제거
             seatRepository.save(testSeat);
         }
     }
@@ -82,18 +88,21 @@ class PointConcurrencyTest {
     void concurrentBalanceDeduction_ShouldPreventNegativeBalance() throws Exception {
         // given
         String userId = "point-test-user";
-        Long initialBalance = 100000L; // 10만원
+        BigDecimal initialBalance = BigDecimal.valueOf(100000); // Long → BigDecimal
         int threadCount = 10;
         int reservationCount = 5; // 5개 예약만 성공해야 함 (5만원 x 5 = 25만원 > 10만원)
 
-        // 사용자 생성
-        User user = new User(userId, initialBalance);
+        // 사용자 및 잔액 생성 (분리)
+        User user = new User(userId); // balance 제거
         userRepository.save(user);
+
+        Balance balance = new Balance(userId, initialBalance); // 별도 생성
+        balanceRepository.save(balance);
 
         // 테스트용 좌석들 생성
         List<Seat> testSeats = new ArrayList<>();
         for (int i = 0; i < threadCount; i++) {
-            Seat seat = new Seat(null, testConcertId, baseSeatNumber + 100 + i, seatPrice);
+            Seat seat = new Seat(testConcertId, baseSeatNumber + 100 + i, seatPrice); // null 제거
             testSeats.add(seatRepository.save(seat));
         }
 
@@ -162,19 +171,21 @@ class PointConcurrencyTest {
         log.info("Success count: {}, Fail count: {}", successCount.get(), failCount.get());
         log.info("Results: {}", results);
 
-        // 잔액이 음수가 되지 않아야 함
-        User finalUser = userRepository.findById(userId).orElseThrow();
-        assertThat(finalUser.getBalance()).isGreaterThanOrEqualTo(0L);
+        // 잔액이 음수가 되지 않아야 함 - Balance에서 조회
+        Balance finalBalance = balanceRepository.findByUserId(userId).orElseThrow();
+        assertThat(finalBalance.getAmount()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
 
         // 성공한 결제 수는 초기 잔액으로 가능한 최대 수와 같아야 함
-        int maxPossiblePayments = (int) (initialBalance / seatPrice); // 100,000 / 50,000 = 2
+        int maxPossiblePayments = initialBalance.divide(seatPrice).intValue(); // BigDecimal 계산
         assertThat(successCount.get()).isLessThanOrEqualTo(maxPossiblePayments);
 
         // 실제 차감된 금액 검증
-        Long expectedRemainingBalance = initialBalance - (successCount.get() * seatPrice);
-        assertThat(finalUser.getBalance()).isEqualTo(expectedRemainingBalance);
+        BigDecimal expectedRemainingBalance = initialBalance.subtract(
+                seatPrice.multiply(BigDecimal.valueOf(successCount.get()))
+        );
+        assertThat(finalBalance.getAmount()).isEqualTo(expectedRemainingBalance);
 
-        log.info("최종 잔액: {}원, 예상 잔액: {}원", finalUser.getBalance(), expectedRemainingBalance);
+        log.info("최종 잔액: {}원, 예상 잔액: {}원", finalBalance.getAmount(), expectedRemainingBalance);
     }
 
     @Test
@@ -183,19 +194,22 @@ class PointConcurrencyTest {
     void concurrentBalanceDeduction_DirectPayment_ShouldPreventNegativeBalance() throws Exception {
         // given
         String userId = "balance-test-user";
-        Long initialBalance = 100000L; // 10만원
+        BigDecimal initialBalance = BigDecimal.valueOf(100000); // Long → BigDecimal
         int threadCount = 10;
-        Long paymentAmount = 30000L; // 3만원씩 결제 시도 (총 30만원 시도, 하지만 10만원만 있음)
+        BigDecimal paymentAmount = BigDecimal.valueOf(30000); // Long → BigDecimal
 
-        // 사용자 생성
-        User user = new User(userId, initialBalance);
+        // 사용자 및 잔액 생성 (분리)
+        User user = new User(userId); // balance 제거
         userRepository.save(user);
+
+        Balance balance = new Balance(userId, initialBalance); // 별도 생성
+        balanceRepository.save(balance);
 
         // 여러 예약 미리 생성 (QueueService 우회)
         List<ReservationResult> reservations = new ArrayList<>();
         for (int i = 0; i < threadCount; i++) {
             // 좌석 생성
-            Seat seat = new Seat(null, testConcertId, baseSeatNumber + 300 + i, paymentAmount.intValue());
+            Seat seat = new Seat(testConcertId, baseSeatNumber + 300 + i, paymentAmount); // null 제거
             seatRepository.save(seat);
 
             // 예약 직접 생성 (토큰 발급 없이)
@@ -203,7 +217,7 @@ class PointConcurrencyTest {
                     userId,
                     testConcertId,
                     seat.getSeatId(),
-                    paymentAmount.intValue(),
+                    paymentAmount,
                     LocalDateTime.now().plusMinutes(5)
             );
             reservationRepository.save(reservation);
@@ -255,29 +269,30 @@ class PointConcurrencyTest {
         long duration = endTime - startTime;
 
         // then - 결과 검증
-        // then - 결과 검증
         log.info("=== 잔액 차감 동시성 테스트 결과 ===");
         log.info("Success count: {}, Fail count: {}", successCount.get(), failCount.get());
         log.info("{}개 스레드 동시 결제 소요시간: {}ms", threadCount, duration);
         log.info("평균 응답시간: {}ms per request", duration / threadCount);
-        log.info("스레드 처리율: {} requests/second: {}", Math.round((double) threadCount / duration * 1000));
+        log.info("스레드 처리율: {} requests/second", Math.round((double) threadCount / duration * 1000));
         log.info("Results: {}", results);
 
-
-        User finalUser = userRepository.findById(userId).orElseThrow();
+        // 잔액이 음수가 되지 않아야 함 - Balance에서 조회
+        Balance finalBalance = balanceRepository.findByUserId(userId).orElseThrow();
 
         // 잔액이 음수가 되지 않아야 함
-        assertThat(finalUser.getBalance()).isGreaterThanOrEqualTo(0L);
+        assertThat(finalBalance.getAmount()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
 
         // 성공한 결제 수는 가능한 최대 수와 같아야 함
-        int maxPossiblePayments = (int) (initialBalance / paymentAmount); // 100,000 / 30,000 = 3
+        int maxPossiblePayments = initialBalance.divide(paymentAmount).intValue(); // BigDecimal 계산
         assertThat(successCount.get()).isLessThanOrEqualTo(maxPossiblePayments);
 
         // 실제 잔액 검증
-        Long expectedRemainingBalance = initialBalance - (successCount.get() * paymentAmount);
-        assertThat(finalUser.getBalance()).isEqualTo(expectedRemainingBalance);
+        BigDecimal expectedRemainingBalance = initialBalance.subtract(
+                paymentAmount.multiply(BigDecimal.valueOf(successCount.get()))
+        );
+        assertThat(finalBalance.getAmount()).isEqualTo(expectedRemainingBalance);
 
-        log.info("최종 잔액: {}원, 예상 잔액: {}원", finalUser.getBalance(), expectedRemainingBalance);
+        log.info("최종 잔액: {}원, 예상 잔액: {}원", finalBalance.getAmount(), expectedRemainingBalance);
         log.info("동시성 제어 성공: 음수 잔액 방지 ✅");
         log.info("=== 테스트 완료 ===");
     }

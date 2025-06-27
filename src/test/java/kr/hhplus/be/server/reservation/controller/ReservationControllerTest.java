@@ -17,7 +17,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import static org.hamcrest.Matchers.greaterThan;
@@ -54,7 +54,7 @@ class ReservationControllerTest {
     void whenReserveSeat_ThenShouldReturn201() throws Exception {
         // given
         ReservationResult mockResult = new ReservationResult(
-                new Reservation("user-123", 1L, 1L, 50000, LocalDateTime.now().plusMinutes(5)),
+                new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000), LocalDateTime.now().plusMinutes(5)),
                 15
         );
 
@@ -87,7 +87,7 @@ class ReservationControllerTest {
         // given
         String reservationId = "reservation-123";
         ReservationResult mockResult = new ReservationResult(
-                new Reservation("user-123", 1L, 1L, 50000, LocalDateTime.now().plusMinutes(5)),
+                new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000), LocalDateTime.now().plusMinutes(5)),
                 15
         );
 
@@ -117,8 +117,8 @@ class ReservationControllerTest {
 
         // when & then
         mockMvc.perform(delete("/api/reservations/{reservationId}", reservationId)
-                .header("Authorization", "Bearer token-123")
-                .param("userId", userId))
+                        .header("Authorization", "Bearer token-123")
+                        .param("userId", userId))
                 .andExpect( status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("예약이 취소되었습니다."));

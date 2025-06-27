@@ -15,6 +15,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Optional;
@@ -40,11 +41,12 @@ class ReservationServiceTest {
 
     private ReserveSeatCommand command;
     private Seat availableSeat;
+    private BigDecimal seatPrice = BigDecimal.valueOf(50000);
 
     @BeforeEach
     void setUp() {
         command = new ReserveSeatCommand("user-123", 1L, 15);
-        availableSeat = new Seat(1L, 1L, 15, 50000);
+        availableSeat = new Seat(1L, 15, seatPrice);
     }
 
     @Test
@@ -118,7 +120,7 @@ class ReservationServiceTest {
     @DisplayName("이미 예약된 좌석을 예약하려고 하면 예외가 발생한다")
     void whenReserveAlreadyReservedSeat_ThenShouldThrowException() {
         // given
-        Seat reservedSeat = new Seat(1L, 1L, 15, 50000);
+        Seat reservedSeat = new Seat(1L, 15, seatPrice);
         reservedSeat.assignTemporarily("other-user", LocalDateTime.now().plusMinutes(5));
 
         given(distributedLockService.tryLock(anyString(), anyString(), anyLong())).willReturn(true);
@@ -137,7 +139,7 @@ class ReservationServiceTest {
     @DisplayName("만료된 임시 배정 좌석은 자동으로 해제하고 예약을 진행한다")
     void whenReserveExpiredTemporarilyAssignedSeat_ThenShouldReleaseAndProceed() {
         // given
-        Seat expiredSeat = new Seat(1L, 1L, 15, 50000);
+        Seat expiredSeat = new Seat(1L, 15, seatPrice);
         LocalDateTime pastTime = LocalDateTime.now().minusMinutes(1);
         expiredSeat.assignTemporarily("other-user", pastTime);
 
@@ -162,7 +164,7 @@ class ReservationServiceTest {
     void whenGetReservationStatus_ThenShouldReturnCorrectInfo() {
         // given
         String reservationId = "reservation-123";
-        Reservation reservation = new Reservation("user-123", 1L, 1L, 50000, LocalDateTime.now().plusMinutes(5));
+        Reservation reservation = new Reservation("user-123", 1L, 1L, seatPrice, LocalDateTime.now().plusMinutes(5));
 
         given(reservationRepository.findById(reservationId)).willReturn(Optional.of(reservation));
         given(seatRepository.findById(1L)).willReturn(Optional.of(availableSeat));
@@ -197,8 +199,8 @@ class ReservationServiceTest {
         String reservationId = "reservation-123";
         String userId = "user-123";
 
-        Reservation reservation = new Reservation(userId, 1L, 1L, 50000, LocalDateTime.now().plusMinutes(5));
-        Seat seat = new Seat(1L, 1L, 15, 50000);
+        Reservation reservation = new Reservation(userId, 1L, 1L, seatPrice, LocalDateTime.now().plusMinutes(5));
+        Seat seat = new Seat(1L, 15, seatPrice);
         seat.assignTemporarily(userId, LocalDateTime.now().plusMinutes(5));
 
         given(reservationRepository.findById(reservationId)).willReturn(Optional.of(reservation));
@@ -224,7 +226,7 @@ class ReservationServiceTest {
         String reservationOwner = "user-123";
         String unauthorizedUser = "user-456";
 
-        Reservation reservation = new Reservation(reservationOwner, 1L, 1L, 50000, LocalDateTime.now().plusMinutes(5));
+        Reservation reservation = new Reservation(reservationOwner, 1L, 1L, seatPrice, LocalDateTime.now().plusMinutes(5));
         given(reservationRepository.findById(reservationId)).willReturn(Optional.of(reservation));
 
         // when & then
@@ -237,11 +239,11 @@ class ReservationServiceTest {
     @DisplayName("만료된 예약들을 일괄 해제한다")
     void whenReleaseExpiredReservations_ThenShouldProcessAllExpiredReservations() {
         // given
-        Reservation expiredReservation1 = new Reservation("user-123", 1L, 1L, 50000, LocalDateTime.now().minusMinutes(1));
-        Reservation expiredReservation2 = new Reservation("user-456", 1L, 2L, 50000, LocalDateTime.now().minusMinutes(2));
+        Reservation expiredReservation1 = new Reservation("user-123", 1L, 1L, seatPrice, LocalDateTime.now().minusMinutes(1));
+        Reservation expiredReservation2 = new Reservation("user-456", 1L, 2L, seatPrice, LocalDateTime.now().minusMinutes(2));
 
-        Seat seat1 = new Seat(1L, 1L, 15, 50000);
-        Seat seat2 = new Seat(2L, 1L, 16, 50000);
+        Seat seat1 = new Seat(1L, 15, seatPrice);
+        Seat seat2 = new Seat(1L, 16, seatPrice);
 
         // 좌석을 임시 배정 상태로 만들어야 함
         seat1.assignTemporarily("user-123", LocalDateTime.now().minusMinutes(1));

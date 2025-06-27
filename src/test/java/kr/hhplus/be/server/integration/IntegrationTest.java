@@ -12,6 +12,8 @@ import kr.hhplus.be.server.payment.dto.PaymentResult;
 
 import kr.hhplus.be.server.user.domain.User;
 import kr.hhplus.be.server.user.repository.UserRepository;
+import kr.hhplus.be.server.balance.domain.Balance;
+import kr.hhplus.be.server.balance.repository.BalanceRepository;
 import kr.hhplus.be.server.seat.domain.Seat;
 import kr.hhplus.be.server.seat.repository.SeatRepository;
 import kr.hhplus.be.server.reservation.repository.ReservationRepository;
@@ -30,6 +32,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -59,6 +62,9 @@ class IntegrationTest {
     private UserRepository userRepository;
 
     @Autowired
+    private BalanceRepository balanceRepository; // 추가
+
+    @Autowired
     private SeatRepository seatRepository;
 
     @Autowired
@@ -69,17 +75,16 @@ class IntegrationTest {
 
     private static final Logger log = LoggerFactory.getLogger(IntegrationTest.class);
 
-
     private Long testConcertId = 1L;
     private Integer testSeatNumber = 15;
-    private Integer seatPrice = 50000;
+    private BigDecimal seatPrice = BigDecimal.valueOf(50000); // Integer → BigDecimal
     private Seat testSeat;
 
     @BeforeEach
     @Transactional
     void setUp() {
-        // 테스트용 좌석 생성
-        testSeat = new Seat(null, testConcertId, testSeatNumber, seatPrice);
+        // 테스트용 좌석 생성 (BigDecimal 사용)
+        testSeat = new Seat(testConcertId, testSeatNumber, seatPrice);
         testSeat = seatRepository.save(testSeat);
     }
 
@@ -89,11 +94,15 @@ class IntegrationTest {
     void fullReservationFlow_TokenToPayment_ShouldWorkCorrectly() {
         // given
         String userId = "user-123";
-        Long initialBalance = 100000L;
+        BigDecimal initialBalance = BigDecimal.valueOf(100000);
 
-        // 사용자 잔액 설정
-        User user = new User(userId, initialBalance);
+        // 사용자 생성 (balance 없이)
+        User user = new User(userId);
         userRepository.save(user);
+
+        // 잔액 정보 별도 생성
+        Balance balance = new Balance(userId, initialBalance);
+        balanceRepository.save(balance);
 
         // when & then
         // 1. 대기열 토큰 발급
@@ -122,7 +131,7 @@ class IntegrationTest {
 
         assertThat(reservation).isNotNull();
         assertThat(reservation.getUserId()).isEqualTo(userId);
-        assertThat(reservation.getPrice()).isEqualTo(seatPrice);
+        assertThat(reservation.getPrice()).isEqualTo(seatPrice.longValue()); // BigDecimal → Long 비교
         assertThat(reservation.getConcertId()).isEqualTo(testConcertId);
         assertThat(reservation.getSeatNumber()).isEqualTo(testSeatNumber);
         assertThat(reservation.getRemainingTimeSeconds()).isGreaterThan(0);
@@ -143,8 +152,8 @@ class IntegrationTest {
         assertThat(finalSeat.getAssignedUserId()).isEqualTo(userId);
 
         // 사용자 잔액이 차감되었는지 확인
-        User finalUser = userRepository.findById(userId).orElseThrow();
-        assertThat(finalUser.getBalance()).isEqualTo(initialBalance - seatPrice);
+        Balance finalBalance = balanceRepository.findByUserId(userId).orElseThrow();
+        assertThat(finalBalance.getAmount()).isEqualTo(initialBalance.subtract(seatPrice));
 
         // 결제 정보 확인
         assertThat(paymentRepository.findByReservationId(reservation.getReservationId())).isPresent();
@@ -156,10 +165,13 @@ class IntegrationTest {
     void paymentWithInsufficientBalance_ShouldFail() {
         // given
         String userId = "user-123";
-        Long insufficientBalance = 30000L; // 좌석 가격보다 적음
+        BigDecimal insufficientBalance = BigDecimal.valueOf(30000); // 좌석 가격보다 적음
 
-        User user = new User(userId, insufficientBalance);
+        User user = new User(userId);
         userRepository.save(user);
+
+        Balance balance = new Balance(userId, insufficientBalance);
+        balanceRepository.save(balance);
 
         // 토큰 발급 및 좌석 예약까지 성공
         QueueToken queueToken = queueService.issueToken(userId);
@@ -188,7 +200,7 @@ class IntegrationTest {
     }
 
     @Test
-    @DisplayName("동시성 테스트: 10명이 같은 좌석에 동시 접근 시 1명만 성공")
+    @DisplayName("동시성 테스트: 50명이 같은 좌석에 동시 접근 시 1명만 성공")
     @Transactional(propagation = Propagation.NOT_SUPPORTED) // 🔥 트랜잭션 비활성화
     void concurrentReservationTest_OnlyOneSucceeds() throws Exception {
         // given
@@ -199,14 +211,17 @@ class IntegrationTest {
         AtomicInteger failCount = new AtomicInteger(0);
 
         // 새로운 좌석 생성 (트랜잭션 독립성 보장)
-        Seat concurrentTestSeat = new Seat(null, testConcertId, testSeatNumber, seatPrice);
+        Seat concurrentTestSeat = new Seat(testConcertId, testSeatNumber, seatPrice);
         Seat savedSeat = seatRepository.save(concurrentTestSeat);
 
         // 모든 사용자에게 충분한 잔액 부여
         for (int i = 0; i < userCount; i++) {
             String userId = "concurrent-user-" + i;
-            User user = new User(userId, 100000L);
+            User user = new User(userId);
             userRepository.save(user);
+
+            Balance balance = new Balance(userId, BigDecimal.valueOf(100000));
+            balanceRepository.save(balance);
         }
 
         // when - 동시에 예약 시도
@@ -285,9 +300,11 @@ class IntegrationTest {
         String firstUserId = "user-first";
         String secondUserId = "user-second";
 
-        // 두 사용자 모두 잔액 설정
-        userRepository.save(new User(firstUserId, 100000L));
-        userRepository.save(new User(secondUserId, 100000L));
+        // 두 사용자 모두 생성 및 잔액 설정
+        userRepository.save(new User(firstUserId));
+        userRepository.save(new User(secondUserId));
+        balanceRepository.save(new Balance(firstUserId, BigDecimal.valueOf(100000)));
+        balanceRepository.save(new Balance(secondUserId, BigDecimal.valueOf(100000)));
 
         // 첫 번째 사용자가 예약 (결제 안함)
         QueueToken firstToken = queueService.issueToken(firstUserId);
@@ -344,8 +361,10 @@ class IntegrationTest {
         String firstUserId = "user-first";
         String secondUserId = "user-second";
 
-        userRepository.save(new User(firstUserId, 100000L));
-        userRepository.save(new User(secondUserId, 100000L));
+        userRepository.save(new User(firstUserId));
+        userRepository.save(new User(secondUserId));
+        balanceRepository.save(new Balance(firstUserId, BigDecimal.valueOf(100000)));
+        balanceRepository.save(new Balance(secondUserId, BigDecimal.valueOf(100000)));
 
         // when - 순서대로 토큰 발급
         QueueToken firstToken = queueService.issueToken(firstUserId);
@@ -368,8 +387,10 @@ class IntegrationTest {
         String firstUserId = "user-first";
         String secondUserId = "user-second";
 
-        userRepository.save(new User(firstUserId, 100000L));
-        userRepository.save(new User(secondUserId, 100000L));
+        userRepository.save(new User(firstUserId));
+        userRepository.save(new User(secondUserId));
+        balanceRepository.save(new Balance(firstUserId, BigDecimal.valueOf(100000)));
+        balanceRepository.save(new Balance(secondUserId, BigDecimal.valueOf(100000)));
 
         // 첫 번째 사용자 예약
         QueueToken firstToken = queueService.issueToken(firstUserId);

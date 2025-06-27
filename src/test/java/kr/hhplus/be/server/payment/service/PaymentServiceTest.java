@@ -6,14 +6,12 @@ import kr.hhplus.be.server.payment.exception.InsufficientBalanceException;
 import kr.hhplus.be.server.reservation.exception.ReservationNotFoundException;
 import kr.hhplus.be.server.payment.domain.Payment;
 import kr.hhplus.be.server.payment.repository.PaymentRepository;
-import kr.hhplus.be.server.point.repository.BalanceTransactionRepository;
+import kr.hhplus.be.server.balance.service.BalanceService;
+import kr.hhplus.be.server.balance.domain.Balance;
 import kr.hhplus.be.server.reservation.domain.Reservation;
 import kr.hhplus.be.server.reservation.repository.ReservationRepository;
 import kr.hhplus.be.server.seat.domain.Seat;
 import kr.hhplus.be.server.seat.repository.SeatRepository;
-import kr.hhplus.be.server.user.repository.UserRepository;
-import kr.hhplus.be.server.point.domain.BalanceTransaction;
-import kr.hhplus.be.server.user.domain.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,6 +20,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -35,28 +34,32 @@ class PaymentServiceTest {
     @Mock
     private PaymentRepository paymentRepository;
     @Mock
-    private UserRepository userRepository;
+    private BalanceService balanceService; // UserRepository → BalanceService
     @Mock
     private ReservationRepository reservationRepository;
     @Mock
     private SeatRepository seatRepository;
-    @Mock
-    private BalanceTransactionRepository balanceTransactionRepository;
 
     @InjectMocks
     private PaymentService paymentService;
 
     private PaymentCommand command;
     private Reservation reservation;
-    private User user;
+    private Balance balance;
     private Seat seat;
 
     @BeforeEach
     void setUp() {
         command = new PaymentCommand("res-123", "user-123");
-        reservation = new Reservation("user-123", 1L, 1L, 50000, LocalDateTime.now().plusMinutes(5));
-        user = new User("user-123", 100000L);
-        seat = new Seat(1L, 1L, 15, 50000);
+        reservation = new Reservation(
+                "user-123",
+                1L,
+                1L,
+                BigDecimal.valueOf(50000), // int → BigDecimal
+                LocalDateTime.now().plusMinutes(5)
+        );
+        balance = new Balance("user-123", BigDecimal.valueOf(100000)); // User → Balance
+        seat = new Seat(1L, 15, BigDecimal.valueOf(50000)); // 생성자 수정
         seat.assignTemporarily("user-123", LocalDateTime.now().plusMinutes(5));
     }
 
@@ -65,12 +68,12 @@ class PaymentServiceTest {
     void whenProcessPayment_ThenShouldSucceed() {
         // given
         given(reservationRepository.findById("res-123")).willReturn(Optional.of(reservation));
-        given(userRepository.findByIdForUpdate("user-123")).willReturn(Optional.of(user));
+        given(balanceService.hasEnoughBalance("user-123", BigDecimal.valueOf(50000))).willReturn(true);
+        given(balanceService.deductBalance("user-123", BigDecimal.valueOf(50000), "res-123")).willReturn(balance);
         given(seatRepository.findById(1L)).willReturn(Optional.of(seat));
         given(paymentRepository.save(any(Payment.class))).willAnswer(invocation -> invocation.getArgument(0));
         given(reservationRepository.save(any(Reservation.class))).willAnswer(invocation -> invocation.getArgument(0));
         given(seatRepository.save(any(Seat.class))).willAnswer(invocation -> invocation.getArgument(0));
-        given(balanceTransactionRepository.save(any(BalanceTransaction.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         // when
         PaymentResult result = paymentService.processPayment(command);
@@ -79,11 +82,12 @@ class PaymentServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getReservationId()).isEqualTo("res-123");
         assertThat(result.getUserId()).isEqualTo("user-123");
-        assertThat(result.getAmount()).isEqualTo(50000L);
+        assertThat(result.getAmount()).isEqualTo(BigDecimal.valueOf(50000)); // Long → BigDecimal
         assertThat(result.getStatus()).isEqualTo("COMPLETED");
 
-        // 검증: 사용자 잔액 차감
-        verify(userRepository).save(argThat(u -> u.getBalance().equals(50000L)));
+        // 검증: 잔액 확인 및 차감
+        verify(balanceService).hasEnoughBalance("user-123", BigDecimal.valueOf(50000));
+        verify(balanceService).deductBalance("user-123", BigDecimal.valueOf(50000), "res-123");
 
         // 검증: 예약 확정
         verify(reservationRepository).save(argThat(r ->
@@ -97,23 +101,22 @@ class PaymentServiceTest {
 
         // 검증: 결제 정보 저장
         verify(paymentRepository).save(any(Payment.class));
-
-        // 검증: 거래 내역 저장
-        verify(balanceTransactionRepository).save(any(BalanceTransaction.class));
     }
 
     @Test
     @DisplayName("잔액 부족 시 결제가 실패한다")
     void whenProcessPaymentWithInsufficientBalance_ThenShouldThrowException() {
         // given
-        User poorUser = new User("user-123", 30000L); // 잔액 부족
         given(reservationRepository.findById("res-123")).willReturn(Optional.of(reservation));
-        given(userRepository.findByIdForUpdate("user-123")).willReturn(Optional.of(poorUser));
+        given(balanceService.hasEnoughBalance("user-123", BigDecimal.valueOf(50000))).willReturn(false);
+        given(balanceService.getBalanceAmount("user-123")).willReturn(BigDecimal.valueOf(30000));
 
         // when & then
         assertThatThrownBy(() -> paymentService.processPayment(command))
                 .isInstanceOf(InsufficientBalanceException.class);
 
+        // 검증: 잔액 차감이 호출되지 않음
+        verify(balanceService, never()).deductBalance(any(), any(), any());
         // 검증: 결제 정보가 저장되지 않음
         verify(paymentRepository, never()).save(any(Payment.class));
     }
@@ -134,7 +137,11 @@ class PaymentServiceTest {
     void whenProcessPaymentForExpiredReservation_ThenShouldThrowException() {
         // given
         Reservation expiredReservation = new Reservation(
-                "user-123", 1L, 1L, 50000, LocalDateTime.now().minusMinutes(1)
+                "user-123",
+                1L,
+                1L,
+                BigDecimal.valueOf(50000), // int → BigDecimal
+                LocalDateTime.now().minusMinutes(1)
         );
         given(reservationRepository.findById("res-123")).willReturn(Optional.of(expiredReservation));
 

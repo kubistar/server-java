@@ -10,6 +10,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -33,7 +34,7 @@ class SeatRepositoryImplTest {
         // given
         Long concertId = 1L;
         Integer seatNumber = 15;
-        Seat expectedSeat = new Seat(1L, concertId, seatNumber, 50000);
+        Seat expectedSeat = new Seat(concertId, seatNumber, BigDecimal.valueOf(50000));
 
         given(seatJpaRepository.findByConcertIdAndSeatNumber(concertId, seatNumber))
                 .willReturn(Optional.of(expectedSeat));
@@ -50,8 +51,8 @@ class SeatRepositoryImplTest {
     @DisplayName("만료된 임시 배정 좌석들 조회")
     void whenFindExpiredTemporaryAssignments_ThenShouldReturnExpiredSeats() {
         // given
-        Seat expiredSeat1 = new Seat(1L, 1L, 15, 50000);
-        Seat expiredSeat2 = new Seat(2L, 1L, 16, 50000);
+        Seat expiredSeat1 = new Seat(1L, 15, BigDecimal.valueOf(50000));
+        Seat expiredSeat2 = new Seat(1L, 16, BigDecimal.valueOf(50000));
         List<Seat> expiredSeats = Arrays.asList(expiredSeat1, expiredSeat2);
 
         // 새로운 메서드에 맞는 Mock 설정
