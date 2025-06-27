@@ -40,4 +40,8 @@ out/
 ### VS Code ###
 .vscode/
 
+*.log              # 모든 .log 확장자 파일
+logs/               # logs 디렉토리 전체
+log/                # log 디렉토리 전체
+
 data
