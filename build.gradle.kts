@@ -50,6 +50,8 @@ dependencies {
 	// Redis
 	implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
+	implementation ("org.apache.commons:commons-text:1.10.0")
+
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.boot:spring-boot-testcontainers")
