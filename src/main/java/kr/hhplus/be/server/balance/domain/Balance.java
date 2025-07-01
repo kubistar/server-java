@@ -45,29 +45,66 @@ public class Balance {
         this.updatedAt = LocalDateTime.now();
     }
 
-    // Long을 받는 편의 메서드 (기존 코드 호환)
+    /**
+     * 충전 금액을 설정
+     * Long 타입의 금액을 BigDecimal로 변환하여 충전
+     *
+     * @param chargeAmount 충전할 금액 (Long 타입)
+     */
     public void chargeAmount(Long chargeAmount) {
         chargeAmount(BigDecimal.valueOf(chargeAmount));
     }
 
+    /**
+     * 계정에서 지정된 금액을 차감
+     * 차감 전 유효성 검증을 수행하며, 차감 후 업데이트 시간을 현재 시간으로 설정
+     *
+     * @param deductAmount 차감할 금액 (BigDecimal 타입)
+     * @throws IllegalArgumentException 차감 금액이 null이거나 0 이하인 경우, 또는 잔액이 부족한 경우
+     */
     public void deductAmount(BigDecimal deductAmount) {
         validateDeductAmount(deductAmount);
         this.amount = this.amount.subtract(deductAmount);
         this.updatedAt = LocalDateTime.now();
     }
 
-    public void deductAmount(Long deductAmount) {
-        deductAmount(BigDecimal.valueOf(deductAmount));
-    }
 
+    /**
+     * 현재 잔액이 요청된 금액 이상인지 확인
+     *
+     * @param requiredAmount 확인할 필요 금액 (BigDecimal 타입)
+     * @return 잔액이 충분하면 true, 부족하면 false
+     */
     public boolean hasEnoughAmount(BigDecimal requiredAmount) {
         return this.amount.compareTo(requiredAmount) >= 0;
     }
 
+
+    /**
+     * 현재 잔액이 요청된 금액 이상인지 확인
+     * Long 타입의 금액을 BigDecimal로 변환하여 확인
+     *
+     * @param requiredAmount 확인할 필요 금액 (Long 타입)
+     * @return 잔액이 충분하면 true, 부족하면 false
+     */
     public boolean hasEnoughAmount(Long requiredAmount) {
         return hasEnoughAmount(BigDecimal.valueOf(requiredAmount));
     }
 
+
+    /**
+     * 충전 금액의 유효성을 검증
+     * 검증 조건:
+     * - null이 아니고 0보다 큰 값
+     * - 최소 충전 금액: 10,000원
+     * - 최대 충전 금액: 1,000,000원
+     * - 1,000원 단위여야 함
+     *
+     * @param amount 검증할 충전 금액
+     * @throws IllegalArgumentException 충전 금액이 null이거나 0 이하인 경우,
+     *                                  최소/최대 충전 금액을 벗어나는 경우,
+     *                                  1,000원 단위가 아닌 경우
+     */
     private void validateChargeAmount(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("충전 금액은 0보다 커야 합니다.");
@@ -84,6 +121,17 @@ public class Balance {
         }
     }
 
+
+    /**
+     * 차감 금액의 유효성을 검증
+     * 검증 조건:
+     * - null이 아니고 0보다 큰 값
+     * - 현재 잔액 이하여야 함
+     *
+     * @param amount 검증할 차감 금액
+     * @throws IllegalArgumentException 차감 금액이 null이거나 0 이하인 경우,
+     *                                  또는 잔액이 부족한 경우
+     */
     private void validateDeductAmount(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("차감 금액은 0보다 커야 합니다.");
