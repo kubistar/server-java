@@ -16,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -62,7 +63,7 @@ class ReservationIntegrationTest {
         assertThat(result.getUserId()).isEqualTo(userId);
         assertThat(result.getConcertId()).isEqualTo(concertId);
         assertThat(result.getSeatNumber()).isEqualTo(seatNumber);
-        assertThat(result.getPrice()).isEqualTo(50000);
+        assertThat(result.getPrice()).isEqualTo(BigDecimal.valueOf(50000)); // 수정
         assertThat(result.getRemainingTimeSeconds()).isGreaterThan(0);
 
         // DB 상태 확인
@@ -121,11 +122,15 @@ class ReservationIntegrationTest {
     @Test
     @DisplayName("만료된 예약 자동 해제 테스트")
     void expiredReservationRelease_ShouldWork() {
-        // given - 과거 시간으로 만료된 예약 생성
+        // given - 미래 시간으로 생성 후 과거 시간으로 변경
         Reservation expiredReservation = new Reservation(
                 "user-123", concertId, testSeat.getSeatId(), seatPrice,
-                LocalDateTime.now().minusMinutes(1) // 1분 전에 만료
+                LocalDateTime.now().plusMinutes(5) // 일단 미래 시간으로 생성
         );
+
+        // Reflection으로 만료 시간을 과거로 변경
+        setReservationExpiresAt(expiredReservation, LocalDateTime.now().minusMinutes(1));
+
         reservationJpaRepository.save(expiredReservation);
 
         // 좌석도 임시 배정 상태로 변경
@@ -142,5 +147,16 @@ class ReservationIntegrationTest {
         ReservationResult result = reserveSeatUseCase.reserveSeat(command);
         assertThat(result).isNotNull();
         assertThat(result.getUserId()).isEqualTo(newUserId);
+    }
+
+    // 헬퍼 메서드 추가 (클래스 레벨에)
+    private void setReservationExpiresAt(Reservation reservation, LocalDateTime expiresAt) {
+        try {
+            Field expiresAtField = Reservation.class.getDeclaredField("expiresAt");
+            expiresAtField.setAccessible(true);
+            expiresAtField.set(reservation, expiresAt);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set expiresAt", e);
+        }
     }
 }

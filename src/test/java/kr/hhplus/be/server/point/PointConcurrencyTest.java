@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal; // 추가
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -176,14 +177,14 @@ class PointConcurrencyTest {
         assertThat(finalBalance.getAmount()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
 
         // 성공한 결제 수는 초기 잔액으로 가능한 최대 수와 같아야 함
-        int maxPossiblePayments = initialBalance.divide(seatPrice).intValue(); // BigDecimal 계산
+        int maxPossiblePayments = initialBalance.divide(seatPrice, RoundingMode.DOWN).intValue();
         assertThat(successCount.get()).isLessThanOrEqualTo(maxPossiblePayments);
 
         // 실제 차감된 금액 검증
         BigDecimal expectedRemainingBalance = initialBalance.subtract(
                 seatPrice.multiply(BigDecimal.valueOf(successCount.get()))
         );
-        assertThat(finalBalance.getAmount()).isEqualTo(expectedRemainingBalance);
+        assertThat(finalBalance.getAmount()).isEqualByComparingTo(expectedRemainingBalance);
 
         log.info("최종 잔액: {}원, 예상 잔액: {}원", finalBalance.getAmount(), expectedRemainingBalance);
     }
@@ -283,14 +284,14 @@ class PointConcurrencyTest {
         assertThat(finalBalance.getAmount()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
 
         // 성공한 결제 수는 가능한 최대 수와 같아야 함
-        int maxPossiblePayments = initialBalance.divide(paymentAmount).intValue(); // BigDecimal 계산
+        int maxPossiblePayments = initialBalance.divide(paymentAmount, RoundingMode.DOWN).intValue();
         assertThat(successCount.get()).isLessThanOrEqualTo(maxPossiblePayments);
 
         // 실제 잔액 검증
         BigDecimal expectedRemainingBalance = initialBalance.subtract(
                 paymentAmount.multiply(BigDecimal.valueOf(successCount.get()))
         );
-        assertThat(finalBalance.getAmount()).isEqualTo(expectedRemainingBalance);
+        assertThat(finalBalance.getAmount()).isEqualByComparingTo(expectedRemainingBalance);
 
         log.info("최종 잔액: {}원, 예상 잔액: {}원", finalBalance.getAmount(), expectedRemainingBalance);
         log.info("동시성 제어 성공: 음수 잔액 방지 ✅");

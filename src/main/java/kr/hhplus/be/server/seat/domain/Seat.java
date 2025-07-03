@@ -9,7 +9,14 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "seats")
+@Table(name = "seats",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_seat_temporary_assignment",
+                        columnNames = {"concert_id", "seat_number", "status", "assigned_user_id"}
+                )
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Seat {
@@ -26,7 +33,7 @@ public class Seat {
     private Integer seatNumber;
 
     @Column(name = "price", nullable = false, precision = 10, scale = 2)
-    private BigDecimal price; // Integer → BigDecimal로 변경
+    private BigDecimal price;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -111,5 +118,4 @@ public class Seat {
         this.assignedUntil = null;
         this.reservedAt = null;
     }
-
 }

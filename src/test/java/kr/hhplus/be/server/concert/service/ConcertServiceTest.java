@@ -248,15 +248,18 @@ class ConcertServiceTest {
     private Concert createTestConcert(Long id, String title, String artist) {
         log.debug("createTestConcert 호출 - ID: {}, Title: {}, Artist: {}", id, title, artist);
 
+        // 현재 날짜로부터 30일 후로 설정 (미래 날짜 보장)
+        LocalDate futureDate = LocalDate.now().plusDays(30);
+
         Concert concert = new Concert(
                 title,
                 artist,
                 "Test Venue",
-                LocalDate.of(2025, 6, 1),
+                futureDate,  // 미래 날짜 사용
                 LocalTime.of(19, 0),
                 50
         );
-        log.debug("Concert 엔티티 생성 완료");
+        log.debug("Concert 엔티티 생성 완료 - 공연날짜: {}", futureDate);
 
         // Reflection을 사용하여 ID 설정 (테스트용)
         try {

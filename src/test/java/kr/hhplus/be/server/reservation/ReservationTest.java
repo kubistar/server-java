@@ -3,6 +3,8 @@ package kr.hhplus.be.server.reservation;
 import kr.hhplus.be.server.reservation.domain.Reservation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.*;
@@ -50,14 +52,28 @@ class ReservationTest {
     @Test
     @DisplayName("만료된 예약을 확정하려고 하면 예외가 발생한다")
     void whenConfirmExpiredReservation_ThenShouldThrowException() {
-        // given
-        LocalDateTime pastTime = LocalDateTime.now().minusMinutes(1);
-        Reservation reservation = new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000), pastTime);
+        // given - 미래 시간으로 생성 후 과거 시간으로 변경
+        Reservation reservation = new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000),
+                LocalDateTime.now().plusMinutes(5));
+
+        // Reflection으로 만료 시간을 과거로 변경
+        setReservationExpiresAt(reservation, LocalDateTime.now().minusMinutes(1));
 
         // when & then
         assertThatThrownBy(() -> reservation.confirm(LocalDateTime.now()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("예약이 만료되었습니다.");
+    }
+
+    // 헬퍼 메서드 (클래스 레벨에 추가)
+    private void setReservationExpiresAt(Reservation reservation, LocalDateTime expiresAt) {
+        try {
+            Field expiresAtField = Reservation.class.getDeclaredField("expiresAt");
+            expiresAtField.setAccessible(true);
+            expiresAtField.set(reservation, expiresAt);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set expiresAt", e);
+        }
     }
 
     @Test
@@ -91,8 +107,10 @@ class ReservationTest {
     @DisplayName("만료된 예약의 남은 시간은 0이다")
     void whenReservationExpired_ThenRemainingTimeShouldBeZero() {
         // given
-        LocalDateTime pastTime = LocalDateTime.now().minusMinutes(1);
-        Reservation reservation = new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000), pastTime);
+        Reservation reservation = new Reservation("user-123", 1L, 1L, BigDecimal.valueOf(50000),
+                LocalDateTime.now().plusMinutes(5));
+        // 과거 시간으로 변경
+        setReservationExpiresAt(reservation, LocalDateTime.now().minusMinutes(1));
 
         // when
         long remainingTime = reservation.getRemainingTimeSeconds();

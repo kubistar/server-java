@@ -1,5 +1,6 @@
 package kr.hhplus.be.server.queue.service;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import kr.hhplus.be.server.queue.domain.QueueStatus;
@@ -20,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 대기열 관리 서비스
- * Redis를 활용한 분산 대기열 시스템 (피드백 반영)
+ * Redis를 활용한 분산 대기열 시스템
  */
 @Service
 public class QueueService {
@@ -28,6 +29,7 @@ public class QueueService {
     private static final Logger log = LoggerFactory.getLogger(QueueService.class);
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final ObjectMapper objectMapper;
 
     @Value("${queue.max-active-users:100}")
     private int maxActiveUsers;
@@ -51,6 +53,12 @@ public class QueueService {
 
     public QueueService(RedisTemplate<String, Object> redisTemplate) {
         this.redisTemplate = redisTemplate;
+
+        // ObjectMapper 설정
+        this.objectMapper = new ObjectMapper();
+        this.objectMapper.registerModule(new JavaTimeModule());
+        this.objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        this.objectMapper.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
     }
 
     /**
@@ -183,29 +191,30 @@ public class QueueService {
     }
 
     /**
-     * 기존 토큰 찾기
      */
     private QueueToken findExistingToken(String userId) {
-        String userTokenKey = USER_TOKEN_MAPPING_KEY + userId;
-        String existingToken = (String) redisTemplate.opsForValue().get(userTokenKey);
+        try {
+            String userTokenKey = USER_TOKEN_MAPPING_KEY + userId;
+            String existingToken = (String) redisTemplate.opsForValue().get(userTokenKey);
 
-        if (existingToken != null) {
-            return safeGetFromRedis(QUEUE_TOKEN_KEY + existingToken, QueueToken.class);
+            if (existingToken != null) {
+                return getTokenFromRedis(QUEUE_TOKEN_KEY + existingToken);
+            }
+
+            return null;
+        } catch (Exception e) {
+            log.error("기존 토큰 조회 실패: userId={}, error={}", userId, e.getMessage());
+            return null;
         }
-
-        return null;
     }
 
-
     /**
-     * 대기열 상태 조회
-     * @param token 대기열 토큰
-     * @return 현재 대기열 상태
+     * 대기열 상태 조회 (수정됨)
      */
     public QueueToken getQueueStatus(String token) {
         log.info("대기열 상태 조회: token={}", token);
 
-        QueueToken queueToken = (QueueToken) redisTemplate.opsForValue().get(QUEUE_TOKEN_KEY + token);
+        QueueToken queueToken = getTokenFromRedis(QUEUE_TOKEN_KEY + token);
 
         if (queueToken == null) {
             log.warn("토큰을 찾을 수 없음: token={}", token);
@@ -231,8 +240,6 @@ public class QueueService {
 
     /**
      * 토큰 유효성 검증 (좌석 조회 시 사용)
-     * @param token 대기열 토큰
-     * @return 유효한 활성 토큰인지 여부
      */
     public boolean validateActiveToken(String token) {
         log.info("토큰 유효성 검증: token={}", token);
@@ -399,32 +406,53 @@ public class QueueService {
         );
     }
 
-    @SuppressWarnings("unchecked")
-    private <T> T safeGetFromRedis(String key, Class<T> type) {
-        Object obj = redisTemplate.opsForValue().get(key);
+    /**
+     * Redis에서 토큰 조회
+     */
+    private QueueToken getTokenFromRedis(String key) {
+        try {
+            Object obj = redisTemplate.opsForValue().get(key);
 
-        if (obj == null) {
-            return null;
-        }
-
-        if (type.isInstance(obj)) {
-            return type.cast(obj);
-        }
-
-        // LinkedHashMap인 경우 변환 시도
-        if (obj instanceof LinkedHashMap) {
-            try {
-                ObjectMapper objectMapper = new ObjectMapper();
-                objectMapper.registerModule(new JavaTimeModule());
-
-                String json = objectMapper.writeValueAsString(obj);
-                return objectMapper.readValue(json, type);
-            } catch (Exception e) {
-                log.error("객체 변환 실패: {} to {}", obj.getClass(), type, e);
+            if (obj == null) {
                 return null;
             }
-        }
 
-        return null;
+            // 이미 QueueToken 객체인 경우
+            if (obj instanceof QueueToken) {
+                return (QueueToken) obj;
+            }
+
+            // String (JSON)인 경우
+            if (obj instanceof String) {
+                return objectMapper.readValue((String) obj, QueueToken.class);
+            }
+
+            // LinkedHashMap인 경우
+            if (obj instanceof LinkedHashMap) {
+                String json = objectMapper.writeValueAsString(obj);
+                return objectMapper.readValue(json, QueueToken.class);
+            }
+
+            log.warn("지원하지 않는 타입: {}", obj.getClass());
+            return null;
+
+        } catch (Exception e) {
+            log.error("Redis에서 토큰 조회 실패: key={}, error={}", key, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Redis에 토큰 저장
+     */
+    private void saveTokenToRedis(String key, QueueToken queueToken) {
+        try {
+            // JSON 문자열로 저장하여 일관성 유지
+            String json = objectMapper.writeValueAsString(queueToken);
+            redisTemplate.opsForValue().set(key, json, tokenExpireMinutes, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.error("Redis에 토큰 저장 실패: key={}, error={}", key, e.getMessage());
+            throw new RuntimeException("토큰 저장 실패", e);
+        }
     }
 }

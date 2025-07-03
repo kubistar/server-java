@@ -54,21 +54,21 @@ class SeatControllerIntegrationTest {
     void setUp() {
         log.info("=== 통합 테스트 준비 ===");
 
-        // 테스트 콘서트 데이터 준비
+        // 테스트 콘서트 데이터
         Concert concert1 = new Concert(
-                "IU 2025 Concert",
-                "IU",
+                "BLACKPINK 2025 WORLD TOUR",
+                "BLACKPINK",
                 "올림픽공원 체조경기장",
-                LocalDate.of(2025, 6, 1),
+                LocalDate.now().plusDays(30), // 현재 날짜 + 30일
                 LocalTime.of(19, 0),
                 50
         );
 
         Concert concert2 = new Concert(
-                "BTS World Tour",
-                "BTS",
+                "NewJeans Get Up Concert",
+                "NewJeans",
                 "잠실종합운동장",
-                LocalDate.of(2025, 7, 15),
+                LocalDate.now().plusDays(60), // 현재 날짜 + 60일
                 LocalTime.of(18, 30),
                 30
         );

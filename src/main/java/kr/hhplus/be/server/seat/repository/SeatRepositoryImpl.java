@@ -22,7 +22,7 @@ public class SeatRepositoryImpl implements SeatRepository {
     }
 
     @Override
-    public Optional<Seat> findByConcertIdAndSeatNumber(Long concertId, Integer seatNumber) {
+    public Optional<Seat> findByConcertIdAndSeatNumberWithLock(Long concertId, Integer seatNumber) {
         return seatJpaRepository.findByConcertIdAndSeatNumber(concertId, seatNumber);
     }
 

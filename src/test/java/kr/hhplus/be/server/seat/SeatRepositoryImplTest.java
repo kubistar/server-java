@@ -40,7 +40,7 @@ class SeatRepositoryImplTest {
                 .willReturn(Optional.of(expectedSeat));
 
         // when
-        Optional<Seat> result = seatRepository.findByConcertIdAndSeatNumber(concertId, seatNumber);
+        Optional<Seat> result = seatRepository.findByConcertIdAndSeatNumberWithLock(concertId, seatNumber);
 
         // then
         assertThat(result).isPresent();
