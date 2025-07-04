@@ -46,7 +46,7 @@ public class ReservationService implements ReserveSeatUseCase {
 
         try {
             // 좌석 조회 및 상태 확인
-            Seat seat = seatRepository.findByConcertIdAndSeatNumber(
+            Seat seat = seatRepository.findByConcertIdAndSeatNumberWithLock(
                     command.getConcertId(),
                     command.getSeatNumber()
             ).orElseThrow(() -> new RuntimeException("존재하지 않는 좌석입니다."));
