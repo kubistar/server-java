@@ -44,6 +44,9 @@ public class Reservation {
     @Column(name = "confirmed_at")
     private LocalDateTime confirmedAt;
 
+    public void updateExpirationTime(LocalDateTime localDateTime) {
+    }
+
     public enum ReservationStatus {
         TEMPORARILY_ASSIGNED, CONFIRMED, CANCELLED, EXPIRED
     }

@@ -190,7 +190,7 @@ class PointConcurrencyTest {
     }
 
     @Test
-    @DisplayName("동시성 테스트: 잔액 차감 시 음수 방지 (직접 결제)")
+    @DisplayName("동시성 테스트: 동시에 결제 요청 시 잔액이 음수로 내려가지 않아야 한다")
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void concurrentBalanceDeduction_DirectPayment_ShouldPreventNegativeBalance() throws Exception {
         // given

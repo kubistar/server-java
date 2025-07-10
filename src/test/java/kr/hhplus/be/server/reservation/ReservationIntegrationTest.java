@@ -149,7 +149,7 @@ class ReservationIntegrationTest {
         assertThat(result.getUserId()).isEqualTo(newUserId);
     }
 
-    // 헬퍼 메서드 추가 (클래스 레벨에)
+    // 헬퍼 메서드 추가
     private void setReservationExpiresAt(Reservation reservation, LocalDateTime expiresAt) {
         try {
             Field expiresAtField = Reservation.class.getDeclaredField("expiresAt");

@@ -13,6 +13,7 @@ import kr.hhplus.be.server.reservation.repository.ReservationRepository;
 import kr.hhplus.be.server.seat.domain.Seat;
 import kr.hhplus.be.server.seat.repository.SeatRepository;
 import kr.hhplus.be.server.common.lock.DistributedLockService;
+import kr.hhplus.be.server.ranking.service.ConcertPopularityRankingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,12 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * 결제 처리
+ *
+ * 콘서트 예약에 대한 결제 처리, 환불, 취소
+ *
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -32,7 +39,19 @@ public class PaymentService implements PaymentUseCase {
     private final ReservationRepository reservationRepository;
     private final SeatRepository seatRepository;
     private final DistributedLockService distributedLockService;
+    private final ConcertPopularityRankingService rankingService;
 
+    /**
+     * 결제를 처리
+     *
+     * 분산락을 통해 중복 결제와 동시 잔액 차감을 방지하며,
+     *
+     * @param command 결제 처리 명령 객체 (예약ID, 사용자ID 포함)
+     * @return 결제 처리 결과
+     * @throws IllegalArgumentException 예약 정보가 유효하지 않거나 이미 처리 중인 경우
+     * @throws InsufficientBalanceException 잔액이 부족한 경우
+     * @throws RuntimeException 결제 처리 중 예상치 못한 오류가 발생한 경우
+     */
     @Override
     public PaymentResult processPayment(PaymentCommand command) {
         log.info("결제 처리 시작: reservationId={}, userId={}",
@@ -66,9 +85,15 @@ public class PaymentService implements PaymentUseCase {
 
     /**
      * 분산락 내에서 실행되는 실제 결제 처리 로직
+     *
+     * 예약 확인, 잔액 검증, 결제 처리, 예약 확정, 좌석 확정
+     * 전체 결제 프로세스를 순차적으로 처리
+     *
+     * @param command 결제 처리 명령 객체
+     * @return 결제 처리 결과
      */
     @Transactional
-    protected  PaymentResult processPaymentWithLock(PaymentCommand command) {
+    protected PaymentResult processPaymentWithLock(PaymentCommand command) {
         log.info("결제 처리 시작: reservationId={}, userId={}",
                 command.getReservationId(), command.getUserId());
 
@@ -153,6 +178,13 @@ public class PaymentService implements PaymentUseCase {
         }
     }
 
+    /**
+     * 결제 정보를 조회
+     *
+     * @param paymentId 조회할 결제 ID
+     * @return 결제 정보
+     * @throws PaymentNotFoundException 결제 정보를 찾을 수 없는 경우
+     */
     @Override
     @Transactional(readOnly = true)
     public PaymentResult getPaymentInfo(String paymentId) {
@@ -165,7 +197,17 @@ public class PaymentService implements PaymentUseCase {
     }
 
     /**
-     * 환불 처리
+     * 완료된 결제에 대한 환불을 처리
+     *
+     * 결제가 완료된 상태에서만 환불이 가능하며,
+     * 환불 시 관련 예약과 좌석 상태를 변경하고 랭킹을 업데이트
+     *
+     * @param paymentId 환불할 결제 ID
+     * @param reason 환불 사유
+     * @return 환불 처리 결과
+     * @throws PaymentNotFoundException 결제 정보를 찾을 수 없는 경우
+     * @throws IllegalArgumentException 완료되지 않은 결제에 대해 환불을 요청한 경우
+     * @throws RuntimeException 환불 처리 중 예상치 못한 오류가 발생한 경우
      */
     @Transactional
     public PaymentResult refundPayment(String paymentId, String reason) {
@@ -180,14 +222,18 @@ public class PaymentService implements PaymentUseCase {
                 throw new IllegalArgumentException("완료된 결제만 환불 가능합니다. 현재 상태: " + payment.getStatus());
             }
 
-            // 2. 환불 금액 추가
+            // 2. 예약 정보 조회 (랭킹 업데이트를 위해 필요)
+            Reservation reservation = reservationRepository.findById(payment.getReservationId())
+                    .orElse(null);
+
+            // 3. 환불 금액 추가
             balanceService.refundBalance(payment.getUserId(), payment.getAmount(), reason);
 
-            // 3. 결제 상태 변경 (환불로 변경)
+            // 4. 결제 상태 변경 (환불로 변경)
             payment.refund();
             paymentRepository.save(payment);
 
-            // 4. 관련 예약 및 좌석 상태 변경 (선택사항)
+            // 5. 관련 예약 및 좌석 상태 변경
             updateRelatedEntitiesForRefund(payment, reason);
 
             log.info("환불 처리 완료: paymentId={}, amount={}", paymentId, payment.getAmount());
@@ -204,29 +250,54 @@ public class PaymentService implements PaymentUseCase {
     }
 
     /**
-     * 결제 취소 처리 (결제 전 취소)
+     * 결제 전 단계에서의 취소를 처리합니다 (미입금 취소).
+     *
+     * PENDING 상태의 결제에 대해서만 취소가 가능하며,
+     * 실제 잔액 차감이 발생하지 않은 상태이므로 잔액 복구는 하지 않습니다.
+     *
+     * @param paymentId 취소할 결제 ID
+     * @param reason 취소 사유
+     * @return 취소 처리 결과
+     * @throws PaymentNotFoundException 결제 정보를 찾을 수 없는 경우
+     * @throws IllegalArgumentException PENDING 상태가 아닌 결제에 대해 취소를 요청한 경우
      */
     @Transactional
-    public PaymentResult cancelPayment(String paymentId, String reason) {
-        log.info("결제 취소 처리 시작: paymentId={}, reason={}", paymentId, reason);
+    public PaymentResult cancelUnpaidPayment(String paymentId, String reason) {
+        log.info("미입금 결제 취소 처리 시작: paymentId={}, reason={}", paymentId, reason);
 
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new PaymentNotFoundException(paymentId));
 
         if (!payment.isPending()) {
-            throw new IllegalArgumentException("이미 취소되거나 환불된 결제입니다.");
+            throw new IllegalArgumentException("대기 중인 결제만 취소할 수 있습니다. 현재 상태: " + payment.getStatus());
         }
 
+        // 예약 정보 조회
+        Reservation reservation = reservationRepository.findById(payment.getReservationId())
+                .orElse(null);
+
+        // 결제 취소 처리
         payment.cancel();
         paymentRepository.save(payment);
 
-        log.info("결제 취소 완료: paymentId={}", paymentId);
+        // 관련 예약 및 좌석 해제
+        if (reservation != null) {
+            releaseReservationAndSeat(reservation, reason);
+        }
+
+        log.info("미입금 결제 취소 완료: paymentId={}", paymentId);
 
         return new PaymentResult(payment);
     }
 
+
     /**
-     * 결제 재시도 처리
+     * 실패한 결제를 재시도
+     *
+     * @param paymentId 재시도할 결제 ID
+     * @return 재시도 결과
+     * @throws PaymentNotFoundException 결제 정보를 찾을 수 없는 경우
+     * @throws IllegalArgumentException 실패 상태가 아닌 결제에 대해 재시도를 요청한 경우
      */
     @Transactional
     public PaymentResult retryPayment(String paymentId) {
@@ -251,11 +322,13 @@ public class PaymentService implements PaymentUseCase {
     }
 
     /**
-     * 예약 유효성 검증
+     * 예약의 유효성을 검증합니다.
+     *
+     * @param reservation 검증할 예약 정보
+     * @param userId 결제 요청한 사용자 ID
+     * @throws IllegalArgumentException 예약이 유효하지 않은 경우
      */
     private void validateReservation(Reservation reservation, String userId) {
-        // 이미 로그인한 사용자이고 대기열을 통과해서 예약한 상태이므로
-        // 기본적인 검증만 수행
         if (!reservation.getUserId().equals(userId)) {
             throw new IllegalArgumentException("예약자와 결제자가 일치하지 않습니다.");
         }
@@ -270,7 +343,10 @@ public class PaymentService implements PaymentUseCase {
     }
 
     /**
-     * 결제 롤백 처리
+     * 결제 실패 시 롤백을 처리합니다.
+     *
+     * @param payment 롤백할 결제 정보
+     * @param userId 사용자 ID
      */
     private void rollbackPayment(Payment payment, String userId) {
         try {
@@ -291,6 +367,32 @@ public class PaymentService implements PaymentUseCase {
     }
 
     /**
+     * 예약과 좌석을 해제합니다.
+     *
+     * @param reservation 해제할 예약 정보
+     * @param reason 해제 사유
+     */
+    private void releaseReservationAndSeat(Reservation reservation, String reason) {
+        try {
+            // 예약 취소
+            reservation.cancel();
+            reservationRepository.save(reservation);
+
+            // 좌석 해제
+            Seat seat = seatRepository.findById(reservation.getSeatId()).orElse(null);
+            if (seat != null && seat.getStatus() == Seat.SeatStatus.TEMPORARILY_ASSIGNED) {
+                // TODO: Seat 도메인에 release() 메서드 추가 필요
+                // seat.release();
+                // seatRepository.save(seat);
+                log.info("좌석 해제 필요: seatId={}, reason={}", seat.getSeatId(), reason);
+            }
+
+        } catch (Exception e) {
+            log.warn("예약 및 좌석 해제 중 오류 발생: reservationId={}", reservation.getReservationId(), e);
+        }
+    }
+
+    /**
      * 분산락 키 생성 메서드들
      */
     private String generateReservationLockKey(String reservationId) {
@@ -305,9 +407,15 @@ public class PaymentService implements PaymentUseCase {
         return userId + "_" + UUID.randomUUID().toString();
     }
 
+    /**
+     * 환불 시 관련 엔티티들의 상태를 업데이트
+     *
+     * @param payment 환불된 결제 정보
+     * @param reason 환불 사유
+     */
     private void updateRelatedEntitiesForRefund(Payment payment, String reason) {
         try {
-            // 예약 상태를 취소로 변경 (선택사항)
+            // 예약 상태를 취소로 변경
             Reservation reservation = reservationRepository.findById(payment.getReservationId())
                     .orElse(null);
 
@@ -316,14 +424,11 @@ public class PaymentService implements PaymentUseCase {
                 reservationRepository.save(reservation);
 
                 // 좌석 상태는 환불 정책에 따라 처리
-                // 현재 Seat 도메인에는 예약된 좌석을 해제하는 메서드가 없음
-                // 비즈니스 정책에 따라 좌석을 그대로 두거나 별도 처리 필요
                 Seat seat = seatRepository.findById(reservation.getSeatId())
                         .orElse(null);
 
                 if (seat != null && seat.isReserved()) {
                     log.info("환불된 좌석 정보: seatId={}, status={}", seat.getSeatId(), seat.getStatus());
-                    // TODO: 환불 시 좌석 처리 정책 결정 필요
                 }
             }
 

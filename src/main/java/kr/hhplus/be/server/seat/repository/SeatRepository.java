@@ -20,5 +20,8 @@ public interface SeatRepository {
     List<Seat> findByConcertId(Long concertId);
     Seat save(Seat seat);
     List<Seat> findExpiredTemporaryAssignments();
+    long countByConcertId(Long concertId);
     void saveAll(List<Seat> seats);
+    // 콘서트별 특정 상태의 좌석 수 카운트
+    long countByConcertIdAndStatus(Long concertId, Seat.SeatStatus status);
 }

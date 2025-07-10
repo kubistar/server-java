@@ -36,7 +36,7 @@ class SeatRepositoryImplTest {
         Integer seatNumber = 15;
         Seat expectedSeat = new Seat(concertId, seatNumber, BigDecimal.valueOf(50000));
 
-        given(seatJpaRepository.findByConcertIdAndSeatNumber(concertId, seatNumber))
+        given(seatJpaRepository.findByConcertIdAndSeatNumberWithLock(concertId, seatNumber))
                 .willReturn(Optional.of(expectedSeat));
 
         // when

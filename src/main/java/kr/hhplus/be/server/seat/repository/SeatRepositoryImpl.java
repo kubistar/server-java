@@ -23,7 +23,7 @@ public class SeatRepositoryImpl implements SeatRepository {
 
     @Override
     public Optional<Seat> findByConcertIdAndSeatNumberWithLock(Long concertId, Integer seatNumber) {
-        return seatJpaRepository.findByConcertIdAndSeatNumber(concertId, seatNumber);
+        return seatJpaRepository.findByConcertIdAndSeatNumberWithLock(concertId, seatNumber);
     }
 
     @Override
@@ -44,7 +44,17 @@ public class SeatRepositoryImpl implements SeatRepository {
     }
 
     @Override
+    public long countByConcertId(Long concertId) {
+        return seatJpaRepository.countByConcertId(concertId);
+    }
+
+    @Override
     public void saveAll(List<Seat> seats) {
         seatJpaRepository.saveAll(seats);
+    }
+
+    @Override
+    public long countByConcertIdAndStatus(Long concertId, Seat.SeatStatus status) {
+        return seatJpaRepository.countByConcertIdAndStatus(concertId, status);
     }
 }
