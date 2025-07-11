@@ -355,11 +355,12 @@ class ReservationServiceTest {
         given(seatRepository.findByConcertIdAndSeatNumberWithLock(1L, 15)).willReturn(Optional.of(availableSeat));
         given(seatRepository.save(any(Seat.class))).willReturn(availableSeat);
 
-        Reservation mockReservation = mock(Reservation.class);
-        when(mockReservation.getReservationId()).thenReturn("reservation-123");
-        when(mockReservation.getUserId()).thenReturn("user-123");
-        when(mockReservation.getConcertId()).thenReturn(1L);
-        given(reservationRepository.save(any(Reservation.class))).willReturn(mockReservation);
+        // 실제 Reservation 객체를 저장할 때 캡처하여 ID 획득
+        ArgumentCaptor<Reservation> reservationCaptor = ArgumentCaptor.forClass(Reservation.class);
+        given(reservationRepository.save(reservationCaptor.capture())).willAnswer(invocation -> {
+            Reservation savedReservation = invocation.getArgument(0);
+            return savedReservation; // 실제 생성된 객체 반환
+        });
 
         // when
         reservationService.reserveSeat(command);
@@ -370,7 +371,10 @@ class ReservationServiceTest {
         verify(eventPublisher).publishEvent(eventCaptor.capture());
 
         ReservationCompletedEvent event = eventCaptor.getValue();
-        assertThat(event.getReservationId()).isEqualTo("reservation-123");
+        Reservation actualReservation = reservationCaptor.getValue();
+
+        // 실제 생성된 예약 정보와 이벤트 데이터가 일치하는지 검증
+        assertThat(event.getReservationId()).isEqualTo(actualReservation.getReservationId());
         assertThat(event.getUserId()).isEqualTo("user-123");
         assertThat(event.getConcertId()).isEqualTo(1L);
         assertThat(event.getSeatId()).isEqualTo(1L);
@@ -378,5 +382,9 @@ class ReservationServiceTest {
         assertThat(event.getPrice()).isEqualTo(BigDecimal.valueOf(50000));
         assertThat(event.getReservedAt()).isNotNull();
         assertThat(event.getReservedAt()).isBefore(LocalDateTime.now().plusSeconds(1));
+
+        // 추가 검증: 예약 ID가 UUID 형식인지 확인
+        assertThat(event.getReservationId()).isNotNull();
+        assertThat(event.getReservationId()).matches("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
     }
 }
