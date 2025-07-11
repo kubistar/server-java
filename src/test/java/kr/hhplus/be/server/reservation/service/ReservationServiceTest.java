@@ -2,6 +2,7 @@ package kr.hhplus.be.server.reservation.service;
 
 import kr.hhplus.be.server.reservation.command.ReserveSeatCommand;
 import kr.hhplus.be.server.reservation.domain.Reservation;
+import kr.hhplus.be.server.reservation.event.ReservationCompletedEvent;
 import kr.hhplus.be.server.seat.domain.Seat;
 import kr.hhplus.be.server.reservation.dto.ReservationResult;
 import kr.hhplus.be.server.reservation.repository.ReservationRepository;
@@ -11,9 +12,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -36,6 +39,9 @@ class ReservationServiceTest {
 
     @Mock
     private DistributedLockService distributedLockService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher; // 이벤트 퍼블리셔 추가
 
     @InjectMocks
     private ReservationService reservationService;
@@ -75,8 +81,8 @@ class ReservationServiceTest {
     }
 
     @Test
-    @DisplayName("정상적인 좌석 예약 요청 시 임시 배정이 성공한다")
-    void whenReserveSeatWithValidRequest_ThenShouldSucceed() {
+    @DisplayName("정상적인 좌석 예약 요청 시 임시 배정이 성공하고 이벤트가 발행된다")
+    void whenReserveSeatWithValidRequest_ThenShouldSucceedAndPublishEvent() {
         // given
         given(distributedLockService.tryLock(anyString(), anyString(), anyLong())).willReturn(true);
         given(seatRepository.findByConcertIdAndSeatNumberWithLock(1L, 15)).willReturn(Optional.of(availableSeat));
@@ -106,13 +112,24 @@ class ReservationServiceTest {
                         reservation.getStatus() == Reservation.ReservationStatus.TEMPORARILY_ASSIGNED
         ));
 
+        // 검증: 이벤트가 발행되었는지 확인
+        ArgumentCaptor<ReservationCompletedEvent> eventCaptor =
+                ArgumentCaptor.forClass(ReservationCompletedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        ReservationCompletedEvent publishedEvent = eventCaptor.getValue();
+        assertThat(publishedEvent.getUserId()).isEqualTo("user-123");
+        assertThat(publishedEvent.getConcertId()).isEqualTo(1L);
+        assertThat(publishedEvent.getSeatNumber()).isEqualTo(15);
+        assertThat(publishedEvent.getPrice()).isEqualTo(BigDecimal.valueOf(50000));
+
         // 검증: 락이 해제되었는지 확인
         verify(distributedLockService).unlock(anyString(), anyString());
     }
 
     @Test
-    @DisplayName("분산 락 획득에 실패하면 예외가 발생한다")
-    void whenFailToAcquireLock_ThenShouldThrowException() {
+    @DisplayName("분산 락 획득에 실패하면 예외가 발생하고 이벤트는 발행되지 않는다")
+    void whenFailToAcquireLock_ThenShouldThrowExceptionAndNotPublishEvent() {
         // given
         given(distributedLockService.tryLock(anyString(), anyString(), anyLong())).willReturn(false);
 
@@ -123,11 +140,14 @@ class ReservationServiceTest {
 
         // 검증: 좌석 조회가 발생하지 않았는지 확인
         verify(seatRepository, never()).findByConcertIdAndSeatNumberWithLock(anyLong(), anyInt());
+
+        // 검증: 이벤트가 발행되지 않았는지 확인
+        verify(eventPublisher, never()).publishEvent(any(ReservationCompletedEvent.class));
     }
 
     @Test
-    @DisplayName("존재하지 않는 좌석을 예약하려고 하면 예외가 발생한다")
-    void whenReserveNonExistentSeat_ThenShouldThrowException() {
+    @DisplayName("존재하지 않는 좌석을 예약하려고 하면 예외가 발생하고 이벤트는 발행되지 않는다")
+    void whenReserveNonExistentSeat_ThenShouldThrowExceptionAndNotPublishEvent() {
         // given
         given(distributedLockService.tryLock(anyString(), anyString(), anyLong())).willReturn(true);
         given(seatRepository.findByConcertIdAndSeatNumberWithLock(1L, 15)).willReturn(Optional.empty());
@@ -139,11 +159,14 @@ class ReservationServiceTest {
 
         // 검증: 락이 해제되었는지 확인
         verify(distributedLockService).unlock(anyString(), anyString());
+
+        // 검증: 이벤트가 발행되지 않았는지 확인
+        verify(eventPublisher, never()).publishEvent(any(ReservationCompletedEvent.class));
     }
 
     @Test
-    @DisplayName("이미 예약된 좌석을 예약하려고 하면 예외가 발생한다")
-    void whenReserveAlreadyReservedSeat_ThenShouldThrowException() {
+    @DisplayName("이미 예약된 좌석을 예약하려고 하면 예외가 발생하고 이벤트는 발행되지 않는다")
+    void whenReserveAlreadyReservedSeat_ThenShouldThrowExceptionAndNotPublishEvent() {
         // given
         Seat reservedSeat = new Seat(1L, 15, seatPrice);
         reservedSeat.assignTemporarily("other-user", LocalDateTime.now().plusMinutes(5));
@@ -158,11 +181,14 @@ class ReservationServiceTest {
 
         // 검증: 락이 해제되었는지 확인
         verify(distributedLockService).unlock(anyString(), anyString());
+
+        // 검증: 이벤트가 발행되지 않았는지 확인
+        verify(eventPublisher, never()).publishEvent(any(ReservationCompletedEvent.class));
     }
 
     @Test
-    @DisplayName("만료된 임시 배정 좌석은 자동으로 해제하고 예약을 진행한다")
-    void whenReserveExpiredTemporarilyAssignedSeat_ThenShouldReleaseAndProceed() {
+    @DisplayName("만료된 임시 배정 좌석은 자동으로 해제하고 예약을 진행한 후 이벤트를 발행한다")
+    void whenReserveExpiredTemporarilyAssignedSeat_ThenShouldReleaseAndProceedAndPublishEvent() {
         // given
         Seat expiredSeat = new Seat(1L, 15, seatPrice);
 
@@ -186,8 +212,10 @@ class ReservationServiceTest {
 
         // 검증: 좌석이 두 번 저장되었는지 확인 (해제 + 새로운 배정)
         verify(seatRepository, times(2)).save(any(Seat.class));
-    }
 
+        // 검증: 이벤트가 발행되었는지 확인
+        verify(eventPublisher).publishEvent(any(ReservationCompletedEvent.class));
+    }
 
     @Test
     @DisplayName("예약 상태 조회가 정상적으로 동작한다")
@@ -207,6 +235,9 @@ class ReservationServiceTest {
         assertThat(result.getReservationId()).isEqualTo(reservation.getReservationId());
         assertThat(result.getUserId()).isEqualTo("user-123");
         assertThat(result.getSeatNumber()).isEqualTo(15);
+
+        // 조회는 이벤트 발행하지 않음
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -220,6 +251,9 @@ class ReservationServiceTest {
         assertThatThrownBy(() -> reservationService.getReservationStatus(reservationId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("존재하지 않는 예약입니다.");
+
+        // 실패 시에도 이벤트 발행하지 않음
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -246,6 +280,9 @@ class ReservationServiceTest {
         verify(seatRepository).save(argThat(s ->
                 s.getStatus() == Seat.SeatStatus.AVAILABLE
         ));
+
+        // 취소는 별도 이벤트 없음 (필요시 CancellationEvent 추가 가능)
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -263,6 +300,9 @@ class ReservationServiceTest {
         assertThatThrownBy(() -> reservationService.cancelReservation(reservationId, unauthorizedUser))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("예약을 취소할 권한이 없습니다.");
+
+        // 실패 시에도 이벤트 발행하지 않음
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -302,5 +342,41 @@ class ReservationServiceTest {
         verify(seatRepository, times(2)).findById(any());
         verify(seatRepository, times(2)).save(any(Seat.class));
         verify(reservationRepository).saveAll(any());
+
+        // 만료 처리는 별도 이벤트 없음 (필요시 ExpirationEvent 추가 가능)
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("이벤트 발행 시 올바른 데이터가 포함되어야 한다")
+    void whenPublishEvent_ThenShouldContainCorrectData() {
+        // given
+        given(distributedLockService.tryLock(anyString(), anyString(), anyLong())).willReturn(true);
+        given(seatRepository.findByConcertIdAndSeatNumberWithLock(1L, 15)).willReturn(Optional.of(availableSeat));
+        given(seatRepository.save(any(Seat.class))).willReturn(availableSeat);
+
+        Reservation mockReservation = mock(Reservation.class);
+        when(mockReservation.getReservationId()).thenReturn("reservation-123");
+        when(mockReservation.getUserId()).thenReturn("user-123");
+        when(mockReservation.getConcertId()).thenReturn(1L);
+        given(reservationRepository.save(any(Reservation.class))).willReturn(mockReservation);
+
+        // when
+        reservationService.reserveSeat(command);
+
+        // then - 이벤트 내용 상세 검증
+        ArgumentCaptor<ReservationCompletedEvent> eventCaptor =
+                ArgumentCaptor.forClass(ReservationCompletedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        ReservationCompletedEvent event = eventCaptor.getValue();
+        assertThat(event.getReservationId()).isEqualTo("reservation-123");
+        assertThat(event.getUserId()).isEqualTo("user-123");
+        assertThat(event.getConcertId()).isEqualTo(1L);
+        assertThat(event.getSeatId()).isEqualTo(1L);
+        assertThat(event.getSeatNumber()).isEqualTo(15);
+        assertThat(event.getPrice()).isEqualTo(BigDecimal.valueOf(50000));
+        assertThat(event.getReservedAt()).isNotNull();
+        assertThat(event.getReservedAt()).isBefore(LocalDateTime.now().plusSeconds(1));
     }
 }
