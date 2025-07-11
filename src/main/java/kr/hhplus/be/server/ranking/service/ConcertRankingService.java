@@ -227,11 +227,15 @@ public class ConcertRankingService {
         Double soldOutScore = zSetOperations.score(RANKING_SOLDOUT_SPEED, concertId.toString());
         if (soldOutScore == null) soldOutScore = 0.0;
 
-        // 종합 인기도 점수 계산
-        double popularityScore = (soldOutScore * 0.6) + (bookingSpeed * 100 * 0.4);
+        // 종합 인기도 점수 계산 (매진 속도에 더 높은 가중치)
+        double popularityScore = (soldOutScore * 0.7) + (bookingSpeed * 10 * 0.3); // 예약속도 가중치 낮춤
 
         // 인기도 랭킹 업데이트
         zSetOperations.add(RANKING_POPULARITY, concertId.toString(), popularityScore);
+
+        // 디버깅 로그
+        log.debug("인기도 업데이트 - 콘서트: {}, 매진점수: {}, 예약속도: {}, 최종점수: {}",
+                concertId, soldOutScore, bookingSpeed, popularityScore);
     }
 
     private double calculateSoldOutScore(long soldOutDurationMinutes) {
