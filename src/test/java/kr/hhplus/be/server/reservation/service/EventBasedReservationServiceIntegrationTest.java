@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
@@ -53,13 +54,13 @@ class EventBasedReservationServiceIntegrationTest {
         Long concertId = 1L;
         Integer seatNumber = 10;
         Long seatId = 100L;
-        BigDecimal price = new BigDecimal("50000"); // ✅ BigDecimal 사용
+        BigDecimal price = new BigDecimal("50000");
 
         Seat mockSeat = createMockSeat(seatId, concertId, seatNumber, price);
         Reservation mockReservation = createMockReservation(userId, concertId, seatId, price);
 
         // Mock 설정
-        given(distributedLockService.tryLock(any(), any(), anyInt())).willReturn(true);
+        given(distributedLockService.tryLock(any(), any(), anyLong())).willReturn(true);
         given(seatRepository.findByConcertIdAndSeatNumberWithLock(concertId, seatNumber))
                 .willReturn(Optional.of(mockSeat));
         given(seatRepository.save(any(Seat.class))).willReturn(mockSeat);
@@ -89,22 +90,60 @@ class EventBasedReservationServiceIntegrationTest {
         Long concertId = 1L;
         Integer seatNumber = 10;
         Long seatId = 100L;
-        BigDecimal price = new BigDecimal("50000"); // ✅ Long → BigDecimal 수정
+        BigDecimal price = new BigDecimal("50000");
 
-        Seat mockSeat = createMockSeat(seatId, concertId, seatNumber, price);
-        mockSeat.assignTemporarily("otherUser", LocalDateTime.now().plusMinutes(5));
+        // 이미 배정된 좌석 Mock 생성
+        Seat mockSeat = mock(Seat.class);
+        given(mockSeat.getSeatId()).willReturn(seatId);
+        given(mockSeat.getConcertId()).willReturn(concertId);
+        given(mockSeat.getSeatNumber()).willReturn(seatNumber);
+        given(mockSeat.getPrice()).willReturn(price);
+        given(mockSeat.isAvailable()).willReturn(false); // 이미 배정된 상태
+        given(mockSeat.isExpired()).willReturn(false);   // 만료되지 않은 상태
 
-        given(distributedLockService.tryLock(any(), any(), anyInt())).willReturn(true);
+        given(distributedLockService.tryLock(any(), any(), anyLong())).willReturn(true);
         given(seatRepository.findByConcertIdAndSeatNumberWithLock(concertId, seatNumber))
                 .willReturn(Optional.of(mockSeat));
 
         // When & Then
         ReserveSeatCommand command = new ReserveSeatCommand(userId, concertId, seatNumber);
-        assertThrows(RuntimeException.class, () -> reservationService.reserveSeat(command));
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> reservationService.reserveSeat(command));
+
+        assertThat(exception.getMessage()).isEqualTo("이미 다른 사용자가 선택한 좌석입니다.");
 
         // 데이터 플랫폼으로 전송되지 않았는지 검증
         verify(dataPlatformClient, never()).sendReservationData(any());
+
+        // 락이 해제되었는지 검증 (finally 블록에서 실행됨)
         verify(distributedLockService).unlock(any(), any());
+    }
+
+    @Test
+    void 분산_락_획득_실패_시_예외가_발생하고_데이터_전송은_되지_않는다() {
+        // Given
+        String userId = "user123";
+        Long concertId = 1L;
+        Integer seatNumber = 10;
+
+        // 락 획득 실패 시뮬레이션
+        given(distributedLockService.tryLock(any(), any(), anyLong())).willReturn(false);
+
+        // When & Then
+        ReserveSeatCommand command = new ReserveSeatCommand(userId, concertId, seatNumber);
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> reservationService.reserveSeat(command));
+
+        assertThat(exception.getMessage()).isEqualTo("다른 사용자가 처리 중입니다. 잠시 후 재시도해주세요.");
+
+        // 좌석 조회가 발생하지 않았는지 검증
+        verify(seatRepository, never()).findByConcertIdAndSeatNumberWithLock(anyLong(), any());
+
+        // 데이터 플랫폼으로 전송되지 않았는지 검증
+        verify(dataPlatformClient, never()).sendReservationData(any());
+
+        // 락 해제는 호출되지 않음 (락 획득 실패했으므로)
+        verify(distributedLockService, never()).unlock(any(), any());
     }
 
     @Test
@@ -114,12 +153,12 @@ class EventBasedReservationServiceIntegrationTest {
         Long concertId = 1L;
         Integer seatNumber = 10;
         Long seatId = 100L;
-        BigDecimal price = new BigDecimal("50000"); // ✅ Long → BigDecimal 수정
+        BigDecimal price = new BigDecimal("50000");
 
         Seat mockSeat = createMockSeat(seatId, concertId, seatNumber, price);
         Reservation mockReservation = createMockReservation(userId, concertId, seatId, price);
 
-        given(distributedLockService.tryLock(any(), any(), anyInt())).willReturn(true);
+        given(distributedLockService.tryLock(any(), any(), anyLong())).willReturn(true);
         given(seatRepository.findByConcertIdAndSeatNumberWithLock(concertId, seatNumber))
                 .willReturn(Optional.of(mockSeat));
         given(seatRepository.save(any(Seat.class))).willReturn(mockSeat);
@@ -140,6 +179,52 @@ class EventBasedReservationServiceIntegrationTest {
         // 예약은 정상적으로 완료되었지만, 데이터 전송은 실패
         verify(reservationRepository).save(any(Reservation.class));
         verify(dataPlatformClient, timeout(1000)).sendReservationData(any());
+        verify(distributedLockService).unlock(any(), any());
+    }
+
+    @Test
+    void 만료된_좌석_배정은_해제되고_새로운_예약이_성공한다() throws InterruptedException {
+        // Given
+        String userId = "user123";
+        Long concertId = 1L;
+        Integer seatNumber = 10;
+        Long seatId = 100L;
+        BigDecimal price = new BigDecimal("50000");
+
+        // 만료된 좌석 Mock 생성
+        Seat mockSeat = mock(Seat.class);
+        given(mockSeat.getSeatId()).willReturn(seatId);
+        given(mockSeat.getConcertId()).willReturn(concertId);
+        given(mockSeat.getSeatNumber()).willReturn(seatNumber);
+        given(mockSeat.getPrice()).willReturn(price);
+        given(mockSeat.isAvailable()).willReturn(false); // 배정된 상태
+        given(mockSeat.isExpired()).willReturn(true);    // 만료된 상태
+
+        Reservation mockReservation = createMockReservation(userId, concertId, seatId, price);
+
+        given(distributedLockService.tryLock(any(), any(), anyLong())).willReturn(true);
+        given(seatRepository.findByConcertIdAndSeatNumberWithLock(concertId, seatNumber))
+                .willReturn(Optional.of(mockSeat));
+        given(seatRepository.save(any(Seat.class))).willReturn(mockSeat);
+        given(reservationRepository.save(any(Reservation.class))).willReturn(mockReservation);
+
+        // When
+        ReserveSeatCommand command = new ReserveSeatCommand(userId, concertId, seatNumber);
+        ReservationResult result = reservationService.reserveSeat(command);
+
+        // Then
+        assertThat(result.getUserId()).isEqualTo(userId);
+        assertThat(result.getConcertId()).isEqualTo(concertId);
+        assertThat(result.getSeatNumber()).isEqualTo(seatNumber);
+
+        // 좌석이 두 번 저장되었는지 확인 (해제 + 새로운 배정)
+        verify(seatRepository, times(2)).save(any(Seat.class));
+        verify(mockSeat).releaseAssignment(); // 만료된 배정 해제
+        verify(mockSeat).assignTemporarily(eq(userId), any(LocalDateTime.class)); // 새로운 배정
+
+        // 이벤트가 발행되고 데이터 전송이 수행되는지 검증
+        verify(dataPlatformClient, timeout(1000)).sendReservationData(any());
+        verify(distributedLockService).unlock(any(), any());
     }
 
     private Seat createMockSeat(Long seatId, Long concertId, Integer seatNumber, BigDecimal price) {
@@ -148,8 +233,8 @@ class EventBasedReservationServiceIntegrationTest {
         given(seat.getConcertId()).willReturn(concertId);
         given(seat.getSeatNumber()).willReturn(seatNumber);
         given(seat.getPrice()).willReturn(price);
-        given(seat.isAvailable()).willReturn(true);
-        given(seat.isExpired()).willReturn(false);
+        given(seat.isAvailable()).willReturn(true);  // 사용 가능한 상태
+        given(seat.isExpired()).willReturn(false);   // 만료되지 않은 상태
         return seat;
     }
 
