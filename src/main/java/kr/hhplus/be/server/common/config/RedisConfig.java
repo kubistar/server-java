@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
@@ -48,18 +49,23 @@ public class RedisConfig {
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-        // 🔥 설정된 ObjectMapper를 사용하는 Serializer 생성
+        // 설정된 ObjectMapper를 사용하는 Serializer 생성
         GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(objectMapper);
 
         // Key-Value 직렬화 설정
         template.setKeySerializer(new StringRedisSerializer());
-        template.setValueSerializer(serializer); // 🔥 설정된 serializer 사용
+        template.setValueSerializer(serializer); // 설정된 serializer 사용
 
         // Hash Key-Value 직렬화 설정
         template.setHashKeySerializer(new StringRedisSerializer());
-        template.setHashValueSerializer(serializer); // 🔥 설정된 serializer 사용
+        template.setHashValueSerializer(serializer); // 설정된 serializer 사용
 
         template.afterPropertiesSet();
         return template;
+    }
+
+    @Bean
+    public ZSetOperations<String, Object> zSetOperations(RedisTemplate<String, Object> redisTemplate) {
+        return redisTemplate.opsForZSet();
     }
 }

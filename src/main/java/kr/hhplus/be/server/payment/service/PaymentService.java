@@ -13,7 +13,6 @@ import kr.hhplus.be.server.reservation.repository.ReservationRepository;
 import kr.hhplus.be.server.seat.domain.Seat;
 import kr.hhplus.be.server.seat.repository.SeatRepository;
 import kr.hhplus.be.server.common.lock.DistributedLockService;
-import kr.hhplus.be.server.ranking.service.ConcertPopularityRankingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,7 +38,6 @@ public class PaymentService implements PaymentUseCase {
     private final ReservationRepository reservationRepository;
     private final SeatRepository seatRepository;
     private final DistributedLockService distributedLockService;
-    private final ConcertPopularityRankingService rankingService;
 
     /**
      * 결제를 처리

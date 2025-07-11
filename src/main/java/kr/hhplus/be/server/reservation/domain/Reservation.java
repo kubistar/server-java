@@ -45,6 +45,7 @@ public class Reservation {
     private LocalDateTime confirmedAt;
 
     public void updateExpirationTime(LocalDateTime localDateTime) {
+
     }
 
     public enum ReservationStatus {
