@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-// 필요한 import 추가
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
@@ -66,7 +65,7 @@ public class ConcertRankingService {
             double soldOutScore = calculateSoldOutScore(soldOutDurationMinutes);
 
             // Redis에 매진 속도 랭킹 업데이트
-            zSetOperations.add(RANKING_SOLDOUT_SPEED, concertId, soldOutScore);
+            zSetOperations.add(RANKING_SOLDOUT_SPEED, concertId.toString(), soldOutScore);
 
             // 콘서트 통계 정보 저장
             saveConcertStats(concertId, bookingStartTime, soldOutTime, soldOutDurationMinutes);
@@ -94,17 +93,9 @@ public class ConcertRankingService {
             int rank = 1;
 
             for (ZSetOperations.TypedTuple<Object> tuple : rankings) {
-                // Redis에서 반환되는 값이 Integer일 수 있으므로 안전하게 변환
+                // Redis에서 반환되는 값을 Long으로 안전하게 변환
                 Object value = tuple.getValue();
-                Long concertId;
-                if (value instanceof Integer) {
-                    concertId = ((Integer) value).longValue();
-                } else if (value instanceof Long) {
-                    concertId = (Long) value;
-                } else {
-                    concertId = Long.valueOf(value.toString());
-                }
-
+                Long concertId = Long.valueOf(value.toString());
                 Double score = tuple.getScore();
 
                 ConcertRanking ranking = ConcertRanking.builder()
@@ -143,9 +134,21 @@ public class ConcertRankingService {
                 return 0.0;
             }
 
-            // 최근 5분간 총 예약 수 계산
+            // 최근 5분간 총 예약 수 계산 - 안전한 타입 변환
             double totalBookings = speedData.stream()
-                    .mapToDouble(tuple -> (Double) tuple.getValue())
+                    .mapToDouble(tuple -> {
+                        Object value = tuple.getValue();
+                        if (value instanceof Number) {
+                            return ((Number) value).doubleValue();
+                        } else {
+                            try {
+                                return Double.parseDouble(value.toString());
+                            } catch (NumberFormatException e) {
+                                log.warn("예약 속도 데이터 파싱 실패 - concertId: {}, value: {}", concertId, value);
+                                return 0.0;
+                            }
+                        }
+                    })
                     .sum();
 
             // 분당 예약 속도 계산
@@ -190,13 +193,26 @@ public class ConcertRankingService {
         String currentMinute = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
         String countKey = String.format(BOOKING_COUNT, concertId, currentMinute);
 
-        // 현재 분의 예약 수 조회
-        String bookingCountStr = (String) redisTemplate.opsForValue().get(countKey);
-        double bookingCount = bookingCountStr != null ? Double.parseDouble(bookingCountStr) : 0.0;
+        // 현재 분의 예약 수 조회 - 안전한 타입 변환
+        Object bookingCountObj = redisTemplate.opsForValue().get(countKey);
+        double bookingCount = 0.0;
+
+        if (bookingCountObj != null) {
+            if (bookingCountObj instanceof Number) {
+                bookingCount = ((Number) bookingCountObj).doubleValue();
+            } else {
+                try {
+                    bookingCount = Double.parseDouble(bookingCountObj.toString());
+                } catch (NumberFormatException e) {
+                    log.warn("예약 카운트 파싱 실패 - concertId: {}, value: {}", concertId, bookingCountObj);
+                    bookingCount = 0.0;
+                }
+            }
+        }
 
         // 현재 타임스탬프로 예약 수 저장
         long currentTimestamp = System.currentTimeMillis() / 1000;
-        zSetOperations.add(speedKey, bookingCount, currentTimestamp);
+        zSetOperations.add(speedKey, String.valueOf(bookingCount), currentTimestamp);
 
         // 5분 이전 데이터 제거
         long fiveMinutesAgo = currentTimestamp - 300;
@@ -208,20 +224,20 @@ public class ConcertRankingService {
         double bookingSpeed = getRealTimeBookingSpeed(concertId);
 
         // 매진 속도 점수 조회 (없으면 0)
-        Double soldOutScore = zSetOperations.score(RANKING_SOLDOUT_SPEED, concertId);
+        Double soldOutScore = zSetOperations.score(RANKING_SOLDOUT_SPEED, concertId.toString());
         if (soldOutScore == null) soldOutScore = 0.0;
 
         // 종합 인기도 점수 계산
         double popularityScore = (soldOutScore * 0.6) + (bookingSpeed * 100 * 0.4);
 
         // 인기도 랭킹 업데이트
-        zSetOperations.add(RANKING_POPULARITY, concertId, popularityScore);
+        zSetOperations.add(RANKING_POPULARITY, concertId.toString(), popularityScore);
     }
 
     private double calculateSoldOutScore(long soldOutDurationMinutes) {
         // 매진 소요 시간이 짧을수록 높은 점수
-        // 최소 1분, 최대 1000점
-        return Math.min(10000.0 / Math.max(soldOutDurationMinutes, 1), 1000.0);
+        // 최소 1분으로 제한하여 0으로 나누기 방지
+        return 10000.0 / Math.max(soldOutDurationMinutes, 1);
     }
 
     private void saveConcertStats(Long concertId, LocalDateTime bookingStartTime,
