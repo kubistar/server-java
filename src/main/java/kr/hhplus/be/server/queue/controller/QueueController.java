@@ -16,7 +16,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * 대기열 관리 API 컨트롤러
- * 인터파크 수준의 세션 기반 보안 기능 포함
+ * 디바이스 핑거프린트 기반 보안 기능 포함
  */
 @RestController
 @RequestMapping("/api/queue")
@@ -31,11 +31,11 @@ public class QueueController {
     }
 
     /**
-     * 세션 기반 대기열 토큰 발급 (인터파크 스타일)
+     * 디바이스 핑거프린트 기반 대기열 토큰 발급
      * POST /api/queue/token
      *
      * @param request 토큰 발급 요청 DTO
-     * @param httpRequest HTTP 요청 객체 (세션 정보 추출용)
+     * @param httpRequest HTTP 요청 객체 (디바이스 정보 추출용)
      * @return 발급된 토큰 정보와 API 응답
      */
     @PostMapping("/token")
@@ -46,27 +46,24 @@ public class QueueController {
         String userId = request.getUserId();
         log.info("대기열 토큰 발급 API 호출: userId={}", userId);
 
-        // 클라이언트 정보 수집
-        String clientIp = getClientIp(httpRequest);
-        String userAgent = httpRequest.getHeader("User-Agent");
-        String sessionId = httpRequest.getSession().getId();
+        // 디바이스 핑거프린트 생성
         String deviceFingerprint = request.getDeviceFingerprint();
-
-        // 디바이스 핑거프린트가 없으면 기본값 생성
         if (deviceFingerprint == null || deviceFingerprint.trim().isEmpty()) {
-            deviceFingerprint = generateDeviceFingerprint(clientIp, userAgent);
+            deviceFingerprint = generateDeviceFingerprint(httpRequest);
         }
 
+        String sessionId = httpRequest.getSession().getId();
+
         try {
-            // 세션 기반 토큰 발급
+            // 간소화된 토큰 발급
             QueueToken queueToken = queueService.issueTokenWithSession(
-                    userId, clientIp, userAgent, sessionId, deviceFingerprint
+                    userId, sessionId, deviceFingerprint
             );
 
             QueueTokenResponseDto response = QueueTokenResponseDto.from(queueToken);
 
-            log.info("대기열 토큰 발급 완료: userId={}, token={}, status={}, ip={}",
-                    userId, queueToken.getToken(), queueToken.getStatus(), clientIp);
+            log.info("대기열 토큰 발급 완료: userId={}, token={}, status={}",
+                    userId, queueToken.getToken(), queueToken.getStatus());
 
             return ResponseEntity.status(201)
                     .body(ApiResponse.created(response, "대기열 토큰이 발급되었습니다."));
@@ -80,11 +77,11 @@ public class QueueController {
     }
 
     /**
-     * 세션 검증을 포함한 대기열 상태 조회
+     * 디바이스 검증을 포함한 대기열 상태 조회
      * GET /api/queue/status
      *
      * @param authHeader Authorization 헤더 (Bearer 토큰)
-     * @param httpRequest HTTP 요청 객체 (세션 검증용)
+     * @param httpRequest HTTP 요청 객체 (디바이스 검증용)
      * @return 대기열 상태 정보와 API 응답
      */
     @GetMapping("/status")
@@ -95,15 +92,14 @@ public class QueueController {
         String token = extractToken(authHeader);
         log.info("대기열 상태 조회 API 호출: token={}", token);
 
-        // 세션 정보 수집 (검증용)
-        String clientIp = getClientIp(httpRequest);
-        String userAgent = httpRequest.getHeader("User-Agent");
+        // 디바이스 핑거프린트 생성 (검증용)
+        String deviceFingerprint = generateDeviceFingerprint(httpRequest);
         String sessionId = httpRequest.getSession().getId();
 
         try {
-            // 세션 검증 포함 상태 조회
+            // 간소화된 상태 조회
             QueueToken queueToken = queueService.getQueueStatusWithSession(
-                    token, clientIp, userAgent, sessionId
+                    token, sessionId, deviceFingerprint
             );
 
             QueueTokenResponseDto response = QueueTokenResponseDto.from(queueToken);
@@ -163,6 +159,27 @@ public class QueueController {
     }
 
     /**
+     * HTTP 요청에서 디바이스 핑거프린트 생성
+     * clientIp, userAgent, 기타 헤더 정보를 조합하여 생성
+     *
+     * @param request HTTP 요청 객체
+     * @return 생성된 디바이스 핑거프린트
+     */
+    private String generateDeviceFingerprint(HttpServletRequest request) {
+        String clientIp = getClientIp(request);
+        String userAgent = request.getHeader("User-Agent");
+        String acceptLanguage = request.getHeader("Accept-Language");
+        String acceptEncoding = request.getHeader("Accept-Encoding");
+
+        String combined = clientIp + "|" +
+                (userAgent != null ? userAgent : "unknown") + "|" +
+                (acceptLanguage != null ? acceptLanguage : "unknown") + "|" +
+                (acceptEncoding != null ? acceptEncoding : "unknown");
+
+        return Integer.toHexString(combined.hashCode());
+    }
+
+    /**
      * 실제 클라이언트 IP 추출 (프록시 환경 고려)
      *
      * @param request HTTP 요청 객체
@@ -190,18 +207,6 @@ public class QueueController {
 
         // 직접 연결인 경우
         return request.getRemoteAddr();
-    }
-
-    /**
-     * 디바이스 핑거프린트 생성 (기본값)
-     *
-     * @param clientIp 클라이언트 IP
-     * @param userAgent User-Agent 헤더
-     * @return 생성된 디바이스 핑거프린트
-     */
-    private String generateDeviceFingerprint(String clientIp, String userAgent) {
-        String combined = clientIp + "|" + (userAgent != null ? userAgent : "unknown");
-        return Integer.toHexString(combined.hashCode());
     }
 
     /**

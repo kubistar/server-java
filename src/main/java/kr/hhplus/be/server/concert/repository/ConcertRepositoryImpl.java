@@ -49,4 +49,14 @@ public class ConcertRepositoryImpl implements ConcertRepository {
     public Concert save(Concert concert) {
         return jpaRepository.save(concert);
     }
+
+    @Override
+    public List<Concert> findBySoldOutTrue() {
+        return jpaRepository.findBySoldOutTrue();
+    }
+
+    @Override
+    public List<Concert> findAvailableConcertsForBatch() {
+        return jpaRepository.findAvailableConcertsForBatch();
+    }
 }

@@ -25,6 +25,7 @@ public class ApiResponse<T> {
     /** 응답 생성 시간 */
     private LocalDateTime timestamp;
 
+
     /**
      * 기본 생성자 (외부에서 직접 생성 방지)
      * 현재 시간을 timestamp로 자동 설정

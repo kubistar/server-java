@@ -18,4 +18,23 @@ public interface ReservationJpaRepository extends JpaRepository<Reservation, Str
             Reservation.ReservationStatus status,
             LocalDateTime expiresAt
     );
+
+    /**
+     * 콘서트별 확정된 예약 수 조회
+     *
+     * @param concertId 콘서트 ID
+     * @param status 예약 상태 (예: "CONFIRMED")
+     * @return 해당 콘서트의 확정 예약 수
+     */
+    @Query("SELECT COUNT(r) FROM Reservation r WHERE r.concertId = :concertId AND r.status = :status")
+    Long countByConcertIdAndStatus(@Param("concertId") Long concertId, @Param("status") String status);
+
+    /**
+     * 모든 콘서트의 예약 수 통계 조회
+     *
+     * @return [콘서트ID, 예약수] 형태의 데이터 리스트
+     */
+    @Query("SELECT r.concertId, COUNT(r) FROM Reservation r WHERE r.status = 'CONFIRMED' " +
+            "GROUP BY r.concertId ORDER BY COUNT(r) DESC")
+    List<Object[]> getReservationCountByConcer();
 }

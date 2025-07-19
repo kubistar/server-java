@@ -21,14 +21,13 @@ public class DataPlatformClient {
             String mockApiUrl = "https://mock-data-platform.com/api/reservations";
 
             Map<String, Object> payload = Map.of(
-                    "reservationId", data.getReservationId(),
-                    "userId", data.getUserId(),
-                    "concertId", data.getConcertId(),
-                    "seatNumber", data.getSeatNumber(),
-                    "price", data.getPrice(),
-                    "timestamp", data.getReservedAt().toString()
+                    "reservationId", data.reservationId(),
+                    "userId", data.userId(),
+                    "concertId", data.concertId(),
+                    "seatNumber", data.seatNumber(),
+                    "price", data.price(),
+                    "timestamp", data.reservedAt().toString()
             );
-
             restTemplate.postForObject(mockApiUrl, payload, String.class);
 
         } catch (Exception e) {

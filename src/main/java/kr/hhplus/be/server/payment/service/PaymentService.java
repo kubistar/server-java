@@ -386,7 +386,9 @@ public class PaymentService implements PaymentUseCase {
             }
 
         } catch (Exception e) {
-            log.warn("예약 및 좌석 해제 중 오류 발생: reservationId={}", reservation.getReservationId(), e);
+            log.error("예약 및 좌석 해제 중 오류 발생: reservationId={}", reservation.getReservationId(), e);
+            // 예외를 다시 던져서 상위 트랜잭션이 롤백되도록 함
+            throw new RuntimeException("예약 및 좌석 해제 처리 중 오류가 발생했습니다.", e);
         }
     }
 

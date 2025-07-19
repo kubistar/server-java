@@ -50,12 +50,12 @@ class DataTransferServiceTest {
         verify(dataPlatformClient).sendReservationData(captor.capture());
 
         ReservationDataDto captured = captor.getValue();
-        assertThat(captured.getReservationId()).isEqualTo("reservation123");
-        assertThat(captured.getUserId()).isEqualTo("user123");
-        assertThat(captured.getConcertId()).isEqualTo(1L);
-        assertThat(captured.getSeatNumber()).isEqualTo(10);
-        assertThat(captured.getPrice()).isEqualTo(price);
-        assertThat(captured.getReservedAt()).isEqualTo(now);
+        assertThat(captured.reservationId()).isEqualTo("reservation123");
+        assertThat(captured.userId()).isEqualTo("user123");
+        assertThat(captured.concertId()).isEqualTo(1L);
+        assertThat(captured.seatNumber()).isEqualTo(10);
+        assertThat(captured.price()).isEqualTo(price);
+        assertThat(captured.reservedAt()).isEqualTo(now);
     }
 
     @Test

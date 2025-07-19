@@ -42,6 +42,20 @@ public class Concert {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    // ========== 배치용 필드 추가 ==========
+
+    @Column(name = "sold_out")
+    private Boolean soldOut = false;
+
+    @Column(name = "sold_out_time")
+    private LocalDateTime soldOutTime;
+
+    @Column(name = "booking_start_time")
+    private LocalDateTime bookingStartTime;
+
+    @Column(name = "booking_end_time")
+    private LocalDateTime bookingEndTime;
+
     /**
      * 콘서트 정보를 생성
      * 생성 시간은 자동으로 현재 시간으로 설정
@@ -66,6 +80,11 @@ public class Concert {
         this.concertTime = concertTime;
         this.totalSeats = totalSeats != null ? totalSeats : 50;
         this.createdAt = LocalDateTime.now();
+        this.soldOut = false;
+        // 예약 시작/종료 시간 기본값 설정 (공연 2시간 전부터 1시간 전까지)
+        LocalDateTime concertDateTime = concertDate.atTime(concertTime);
+        this.bookingStartTime = concertDateTime.minusHours(2);
+        this.bookingEndTime = concertDateTime.minusHours(1);
     }
 
     /**
@@ -123,6 +142,92 @@ public class Concert {
      */
     public boolean hasValidSeatCount() {
         return totalSeats != null && totalSeats > 0 && totalSeats <= 100;
+    }
+
+    // ========== 배치용 메소드 추가 ==========
+
+    /**
+     * 매진 처리
+     * 매진 상태로 변경하고 매진 시간 기록
+     */
+    public void markAsSoldOut() {
+        this.soldOut = true;
+        this.soldOutTime = LocalDateTime.now();
+    }
+
+    /**
+     * 매진 여부 확인
+     *
+     * @return 매진 상태면 true, 아니면 false
+     */
+    public boolean isSoldOut() {
+        return this.soldOut != null && this.soldOut;
+    }
+
+    /**
+     * 예약 가능 여부 확인 (배치용)
+     * 매진되지 않았고 예약 기간 내인 경우에만 예약 가능
+     *
+     * @return 예약 가능하면 true, 아니면 false
+     */
+    public boolean isBookingAvailable() {
+        LocalDateTime now = LocalDateTime.now();
+        return !isSoldOut() &&
+                bookingStartTime != null && bookingStartTime.isBefore(now) &&
+                bookingEndTime != null && bookingEndTime.isAfter(now);
+    }
+
+    /**
+     * 매진까지 걸린 시간 계산 (분 단위)
+     *
+     * @return 매진 소요 시간 (분), 매진되지 않았으면 null
+     */
+    public Long getSoldOutDurationMinutes() {
+        if (!isSoldOut() || soldOutTime == null || bookingStartTime == null) {
+            return null;
+        }
+
+        return java.time.Duration.between(bookingStartTime, soldOutTime).toMinutes();
+    }
+
+    /**
+     * 예약 시간 설정
+     *
+     * @param bookingStartTime 예약 시작 시간
+     * @param bookingEndTime 예약 종료 시간
+     */
+    public void setBookingPeriod(LocalDateTime bookingStartTime, LocalDateTime bookingEndTime) {
+        if (bookingStartTime == null || bookingEndTime == null) {
+            throw new IllegalArgumentException("예약 시작/종료 시간은 필수입니다.");
+        }
+        if (bookingStartTime.isAfter(bookingEndTime)) {
+            throw new IllegalArgumentException("예약 시작 시간은 종료 시간보다 이전이어야 합니다.");
+        }
+
+        this.bookingStartTime = bookingStartTime;
+        this.bookingEndTime = bookingEndTime;
+    }
+
+    /**
+     * 매진 취소 (테스트용)
+     */
+    public void cancelSoldOut() {
+        this.soldOut = false;
+        this.soldOutTime = null;
+    }
+
+    /**
+     * ID 조회 메소드 (기존 concertId getter와 통일성을 위해)
+     */
+    public Long getId() {
+        return this.concertId;
+    }
+
+    /**
+     * 이름 조회 메소드 (배치에서 사용)
+     */
+    public String getName() {
+        return this.title;
     }
 
     /**
