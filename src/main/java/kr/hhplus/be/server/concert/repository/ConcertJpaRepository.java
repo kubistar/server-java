@@ -21,5 +21,24 @@ public interface ConcertJpaRepository extends JpaRepository<Concert, Long> {
     List<Concert> findByConcertDate(LocalDate date);
 
     List<Concert> findByArtistContaining(String artist);
+
+    /**
+     * 매진된 콘서트들 조회
+     *
+     * @return 매진된 콘서트 목록
+     */
+    @Query("SELECT c FROM Concert c WHERE c.soldOut = true ORDER BY c.soldOutTime ASC")
+    List<Concert> findBySoldOutTrue();
+
+    /**
+     * 예약 가능한 콘서트들 조회 (배치용)
+     *
+     * @return 예약 가능한 콘서트 목록 (매진되지 않고 예약 기간 내)
+     */
+    @Query("SELECT c FROM Concert c WHERE c.soldOut = false " +
+            "AND c.bookingStartTime <= CURRENT_TIMESTAMP " +
+            "AND c.bookingEndTime >= CURRENT_TIMESTAMP " +
+            "ORDER BY c.bookingStartTime ASC")
+    List<Concert> findAvailableConcertsForBatch();
 }
 

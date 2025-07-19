@@ -40,4 +40,18 @@ public interface ConcertRepository {
      * 모든 콘서트 조회
      */
     List<Concert> findAll();
+
+    /**
+     * 매진된 콘서트들 조회
+     *
+     * @return 매진된 콘서트 목록
+     */
+    List<Concert> findBySoldOutTrue();
+
+    /**
+     * 예약 가능한 콘서트들 조회 (배치용)
+     *
+     * @return 예약 가능한 콘서트 목록 (매진되지 않고 예약 기간 내)
+     */
+    List<Concert> findAvailableConcertsForBatch();
 }

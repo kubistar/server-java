@@ -46,4 +46,14 @@ public class ReservationRepositoryImpl implements ReservationRepository {
     public void saveAll(List<Reservation> reservations) {
         reservationJpaRepository.saveAll(reservations);
     }
+
+    @Override
+    public Long countByConcertIdAndStatus(Long concertId, String status) {
+        return reservationJpaRepository.countByConcertIdAndStatus(concertId, status);
+    }
+
+    @Override
+    public List<Object[]> getReservationCountByConcer() {
+        return reservationJpaRepository.getReservationCountByConcer();
+    }
 }
