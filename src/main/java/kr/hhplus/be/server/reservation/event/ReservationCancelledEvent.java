@@ -5,27 +5,26 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 @Getter
 @NoArgsConstructor
-public class ReservationCompletedEvent extends BaseEvent {
+public class ReservationCancelledEvent extends BaseEvent {
 
     private String reservationId;
     private String userId;
     private Long concertId;
     private Integer seatNumber;
-    private BigDecimal price;
-    private LocalDateTime reservedAt;
+    private BigDecimal refundAmount;
+    private String cancellationReason;
 
-    public ReservationCompletedEvent(String reservationId, String userId, Long concertId,
-                                     Integer seatNumber, BigDecimal price, LocalDateTime reservedAt) {
-        super("RESERVATION_COMPLETED");
+    public ReservationCancelledEvent(String reservationId, String userId, Long concertId,
+                                     Integer seatNumber, BigDecimal refundAmount, String cancellationReason) {
+        super("RESERVATION_CANCELLED");
         this.reservationId = reservationId;
         this.userId = userId;
         this.concertId = concertId;
         this.seatNumber = seatNumber;
-        this.price = price;
-        this.reservedAt = reservedAt;
+        this.refundAmount = refundAmount;
+        this.cancellationReason = cancellationReason;
     }
 }

@@ -35,7 +35,33 @@ spring:
           min-idle: 0
           max-wait: -1ms
 
-
+  # 🚀 Kafka 설정 (이벤트 기반 시스템)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9093,localhost:9094}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all  # 모든 복제본에서 확인
+      retries: 3  # 재시도 횟수
+      properties:
+        enable.idempotence: true  # 중복 방지
+        max.in.flight.requests.per.connection: 5
+        linger.ms: 5  # 배치 처리 대기 시간
+        batch.size: 16384  # 배치 크기
+        compression.type: snappy  # 압축 타입
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:concert-service}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest  # 가장 이른 오프셋부터 읽기
+      enable-auto-commit: false  # 수동 커밋
+      properties:
+        spring.json.trusted.packages: "kr.hhplus.be.server"
+        session.timeout.ms: 30000  # 세션 타임아웃
+        heartbeat.interval.ms: 3000  # 하트비트 간격
+        max.poll.records: 500  # 한 번에 가져올 최대 레코드 수
+        fetch.min.bytes: 1  # 최소 fetch 크기
+        fetch.max.wait.ms: 500  # 최대 대기 시간
 
   # 🛠️ JPA 설정
   jpa:
@@ -67,7 +93,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,kafka
   endpoint:
     health:
       show-details: always
@@ -79,6 +105,8 @@ logging:
     org.springframework.web: DEBUG
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.springframework.kafka: INFO  # Kafka 로그 레벨
+    org.apache.kafka: WARN  # Kafka 클라이언트 로그 레벨
 
 # 📊 애플리케이션 정보
 info:
@@ -93,3 +121,18 @@ queue:
   max-active-users: 100  # 동시 활성 사용자 수
   token-expire-minutes: 30  # 토큰 만료 시간 (분)
   wait-time-per-user: 10  # 사용자당 대기 시간 (초)
+
+# 🚀 Kafka 토픽 설정
+kafka:
+  topics:
+    reservation-events: reservation-events
+    payment-events: payment-events
+    concert-events: concert-events
+    user-events: user-events
+    notification-events: notification-events
+  consumer:
+    groups:
+      notification-service: notification-service
+      analytics-service: analytics-service
+      ranking-service: ranking-service
+      data-platform: data-platform
