@@ -53,13 +53,16 @@ dependencies {
 
 	implementation ("org.apache.commons:commons-text:1.10.0")
 
-    // Test
+	implementation ("org.springframework.kafka:spring-kafka")
+	implementation ("org.apache.kafka:kafka-streams")
+
+	// Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.boot:spring-boot-testcontainers")
 	testImplementation("org.testcontainers:junit-jupiter")
 	testImplementation("org.testcontainers:mysql")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-
+	testImplementation ("org.springframework.kafka:spring-kafka-test")
 }
 
 tasks.withType<Test> {

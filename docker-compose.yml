@@ -1,5 +1,7 @@
 version: '3.8'
+
 services:
+  # 기존 MySQL 설정
   mysql:
     image: mysql:8.0
     container_name: hhplus-mysql
@@ -11,10 +13,13 @@ services:
       - MYSQL_PASSWORD=application
       - MYSQL_DATABASE=hhplus
     volumes:
-      - mysql_data:/var/lSELECT user, host, plugin FROM mysql.user WHERE user = 'application';ib/mysql  # Named volume 사용 (권장)
+      - mysql_data:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password
     restart: unless-stopped
+    networks:
+      - hhplus-network
 
+  # 기존 Redis 설정
   redis:
     image: redis:7-alpine
     container_name: hhplus-redis
@@ -24,12 +29,134 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
     restart: unless-stopped
+    networks:
+      - hhplus-network
 
+  # Zookeeper 설정
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    hostname: zookeeper
+    container_name: hhplus-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    restart: unless-stopped
+    networks:
+      - hhplus-network
+
+  # Kafka Broker 1
+  broker1:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: broker1
+    container_name: hhplus-broker1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker1:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_LOG_RETENTION_MS: 604800000
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: 3
+    volumes:
+      - broker1_data:/var/lib/kafka/data
+    restart: unless-stopped
+    networks:
+      - hhplus-network
+
+  # Kafka Broker 2
+  broker2:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: broker2
+    container_name: hhplus-broker2
+    ports:
+      - "9093:9093"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker2:29093,PLAINTEXT_HOST://localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_LOG_RETENTION_MS: 604800000
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: 3
+    volumes:
+      - broker2_data:/var/lib/kafka/data
+    restart: unless-stopped
+    networks:
+      - hhplus-network
+
+  # Kafka Broker 3
+  broker3:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: broker3
+    container_name: hhplus-broker3
+    ports:
+      - "9094:9094"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker3:29094,PLAINTEXT_HOST://localhost:9094
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_LOG_RETENTION_MS: 604800000
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: 3
+    volumes:
+      - broker3_data:/var/lib/kafka/data
+    restart: unless-stopped
+    networks:
+      - hhplus-network
+
+  # Kafka UI (관리 도구)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: hhplus-kafka-ui
+    ports:
+      - "8080:8080"
+    depends_on:
+      - broker1
+      - broker2
+      - broker3
+    environment:
+      KAFKA_CLUSTERS_0_NAME: hhplus-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker1:29092,broker2:29093,broker3:29094
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    restart: unless-stopped
+    networks:
+      - hhplus-network
 
 networks:
-  default:
+  hhplus-network:
     driver: bridge
 
 volumes:
   mysql_data:
   redis_data:
+  zookeeper_data:
+  zookeeper_logs:
+  broker1_data:
+  broker2_data:
+  broker3_data:
