@@ -12,8 +12,8 @@
 docker-compose up -d
 ```
 
-- [요구사항 명세서](./requirements.md)
-- [api 명세서](./api-spec.md)
-- [데이터베이스 ERD](./erd.md)
-- [시퀀스 다이어그램](./sequence-diagrams.md)
-- [시스템 아키텍처](./architecture.md)
+- [요구사항 명세서](https://github.com/kubistar/server-java/blob/main/docs/requirements.md)
+- [api 명세서](https://github.com/kubistar/server-java/blob/main/docs/api-spec.md)
+- [데이터베이스 ERD](https://github.com/kubistar/server-java/blob/main/docs/erd.md).
+- [시퀀스 다이어그램](https://github.com/kubistar/server-java/blob/main/docs/sequence-diagrams.md)
+- [시스템 아키텍처](https://github.com/kubistar/server-java/blob/main/docs/architecture.md)
