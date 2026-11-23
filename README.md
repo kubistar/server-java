@@ -53,14 +53,14 @@
 | 구간 | 문제 | 해결 방법 |
 |---|---|---|
 | 좌석 예약 | 같은 좌석에 동시 요청 → 중복 예약 | **Redis 분산 락**(`SETNX` + TTL) + 좌석 조회 시 **비관적 락**(`PESSIMISTIC_WRITE`) |
-| 결제 | 같은 예약 이중 결제, 같은 사용자 잔액 동시 차감 | **예약 단위 + 사용자 잔액 단위** 분산 락을 순서대로 획득 후 처리 |
+| 결제 | 같은 예약 이중 결제, 같은 사용자 잔액 동시 차감 | **예약 단위 → 사용자 단위** 분산 락을 고정 순서로 획득 + 잔액 비관적 락 |
 | 잔액 충전/차감 | Lost Update, 음수 잔액 | 잔액 조회 시 **비관적 락**으로 직렬화 |
 | 락 해제 | 다른 요청이 잡은 락을 잘못 해제 | 락 value를 비교 후 삭제하는 **Lua Script**로 원자적 해제 |
 | 임시 배정 만료 | 결제 안 한 좌석이 계속 묶임 | 스케줄러로 만료 건 주기적 해제 + 예약 시점에도 만료 여부 재확인 |
 
 **테스트 결과** (자세한 내용: [동시성 제어 보고서](docs/concurrency_control_report.md))
 - 잔액 100,000원 / 30,000원 결제 10건 동시 요청 → **3건 성공, 7건 실패, 최종 잔액 10,000원** (음수 잔액 없음)
-- 좌석 5개 / 사용자 20명 동시 예약 → **5건만 성공, 중복 예약 0건**
+- 같은 좌석 락에 100개 스레드 동시 요청 → **1건만 락 획득, 99건 실패**
 
 <br>
 
@@ -69,25 +69,19 @@
 도메인 로직과 후처리(랭킹, 알림, 외부 전송)를 분리하기 위해 이벤트 기반으로 구성했습니다.
 
 ```
-[예약/결제/잔액/대기열 서비스]
-        │  도메인 이벤트 발행
-        ▼
-   ┌──────────── Kafka ────────────┐
-   │ reservation-events            │
-   │ payment-events                │
-   │ balance-events                │
-   │ concert-events                │
-   │ queue-events                  │
-   └──────┬───────────────┬────────┘
-          ▼               ▼
-  ranking-service   notification-service
-  (랭킹/통계 갱신)     (알림 처리)
+[잔액 충전/차감] ──► balance-events ──► notification-service
+[콘서트 매진]   ──► concert-events ──► ranking-service
+
+[좌석 예약 완료] ──► Spring 이벤트 (AFTER_COMMIT)
+                     ├─► 랭킹 갱신
+                     └─► 외부 데이터 플랫폼 전송 (@Async, 실패 시 재시도)
 ```
 
-- 토픽: `reservation-events`, `payment-events`, `balance-events`, `concert-events`, `queue-events` 등
+- `EventPublisher`(KafkaTemplate)로 `balance-events`, `concert-events` 발행
 - Consumer Group을 **`ranking-service` / `notification-service`** 로 분리해 같은 이벤트를 독립적으로 소비
+- `reservation-events`, `payment-events`, `queue-events`는 Consumer만 구현된 상태로, 예약 이벤트는 현재 Spring 내부 이벤트로 처리
 - 브로커 3대, 파티션 3개, replication factor 3 구성 (`docker-compose.yml`)
-- Kafka 개념 정리 및 적용 과정: [docs/kafka.md](docs/kafka.md)
+- 구조도: [시스템 아키텍처](docs/architecture.md) · Kafka 정리: [docs/kafka.md](docs/kafka.md)
 
 <br>
 
