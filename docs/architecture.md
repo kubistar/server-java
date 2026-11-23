@@ -1,83 +1,145 @@
-# 인프라 구성도 (Infrastructure Diagram)
+# 시스템 아키텍처
 
 ## 📋 개요
 
-콘서트 예약 서비스의 전체 인프라 구성을 시각화한 문서입니다. 클라이언트부터 데이터베이스까지의 전체 시스템 구조와 네트워크 플로우를 보여줍니다.
+콘서트 예약 서비스의 인프라 구성과 애플리케이션 내부 이벤트 흐름을 정리한 문서입니다.
+
+- **1. 로컬 개발 구성**: `docker-compose.yml`로 실제 띄우는 구성
+- **2. 운영 목표 구성**: 수평 확장을 전제로 설계한 배포 구성 (미구축)
+- **3. 이벤트 흐름**: 도메인 이벤트 → Kafka → Consumer 구조
 
 ---
 
+## 1. 로컬 개발 구성 (docker-compose)
 
 ```mermaid
 graph LR
-subgraph "사용자 및 접근"
-Developer[👨‍💻 개발자<br/>배포/디버깅]
-Admin[🔧 서버 관리자<br/>모니터링/운영]
-User[👤 일반 사용자<br/>콘서트 예약]
-end
+    App[🚀 Spring Boot App<br/>:8080]
 
-subgraph "로드밸런서 계층"
-LB[⚖️ Load Balancer<br/>203.0.113.10<br/>트래픽 분산]
-end
+    subgraph Docker["Docker Compose (hhplus-network)"]
+        MySQL[(🗄️ MySQL 8.0<br/>:3307)]
+        Redis[(🔴 Redis 7<br/>:6379)]
+        ZK[Zookeeper<br/>:2181]
+        subgraph Kafka["Kafka Cluster"]
+            B1[Broker 1<br/>:9092]
+            B2[Broker 2<br/>:9093]
+            B3[Broker 3<br/>:9094]
+        end
+    end
 
-subgraph "Private Network (10.0.0.0/16)"
-subgraph "Application Layer (10.0.1.0/24)"
-App1[🚀 App Server 1<br/>10.0.1.11:8080<br/>대기열 + 예약 처리]
-App2[🚀 App Server 2<br/>10.0.1.12:8080<br/>대기열 + 예약 처리]
-App3[🚀 App Server 3<br/>10.0.1.13:8080<br/>대기열 + 예약 처리]
-end
-
-subgraph "Queue & Cache Layer (10.0.2.0/24)"
-RabbitMQ[🐰 RabbitMQ<br/>10.0.2.10:5672<br/>예약 요청 대기열<br/>FIFO 순서 보장]
-Redis[🔴 Redis<br/>10.0.2.20:6379<br/>• 대기열 토큰 저장<br/>• 임시 좌석 배정<br/>• 분산 락 처리]
-end
-
-subgraph "Database Layer (10.0.3.0/24)"
-MySQL_Master[🗄️ MySQL Master<br/>10.0.3.20:3306<br/>• 예약/결제 데이터<br/>• 좌석 상태 관리<br/>• 사용자 잔액]
-MySQL_Slave[🗄️ MySQL Slave<br/>10.0.3.21:3306<br/>• 콘서트 정보 조회<br/>• 좌석 현황 조회<br/>• 대시보드 데이터]
-end
-end
-
-%% 사용자 접근 플로우
-User --> LB
-Developer --> LB
-Admin --> LB
-
-%% 로드밸런서 분산
-LB --> App1
-LB --> App2
-LB --> App3
-
-%% 애플리케이션 - 큐/캐시 연결
-App1 --> RabbitMQ
-App2 --> RabbitMQ
-App3 --> RabbitMQ
-
-App1 --> Redis
-App2 --> Redis
-App3 --> Redis
-
-%% 애플리케이션 - 데이터베이스 연결
-App1 --> MySQL_Master
-App1 --> MySQL_Slave
-App2 --> MySQL_Master
-App2 --> MySQL_Slave
-App3 --> MySQL_Master
-App3 --> MySQL_Slave
-
-%% 데이터베이스 복제
-MySQL_Master -.->|실시간 복제| MySQL_Slave
-
-%% 스타일링
-style User fill:#fce4ec,stroke:#880e4f,stroke-width:2px
-style Developer fill:#e3f2fd,stroke:#0d47a1,stroke-width:2px
-style Admin fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
-style LB fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-style App1 fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
-style App2 fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
-style App3 fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
-style RabbitMQ fill:#fff8e1,stroke:#f57c00,stroke-width:2px
-style Redis fill:#ffebee,stroke:#b71c1c,stroke-width:2px
-style MySQL_Master fill:#fff3e0,stroke:#e65100,stroke-width:2px
-style MySQL_Slave fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    App --> MySQL
+    App --> Redis
+    App --> B1 & B2 & B3
+    ZK --- B1 & B2 & B3
 ```
 
+| 구성 요소 | 역할 |
+|---|---|
+| **MySQL** | 콘서트·좌석·예약·결제·잔액·거래 내역 저장, 좌석/잔액 조회 시 비관적 락 |
+| **Redis** | 대기열(Sorted Set), 활성 사용자(Set + TTL), 분산 락, 실시간 랭킹(Sorted Set + Lua) |
+| **Kafka** | 도메인 이벤트 전달 (브로커 3대, 파티션 3, replication factor 3, min ISR 2) |
+| **Zookeeper** | Kafka 클러스터 메타데이터 관리 |
+
+---
+
+## 2. 운영 목표 구성
+
+> 아래는 트래픽 증가를 가정한 **설계안**이며 실제로 구축하지는 않았습니다. 현재 코드에는 Read/Write DB 라우팅이 구현되어 있지 않습니다.
+
+```mermaid
+graph LR
+    subgraph Client["사용자"]
+        User[👤 일반 사용자]
+    end
+
+    LB[⚖️ Load Balancer]
+
+    subgraph Private["Private Network"]
+        subgraph AppLayer["Application Layer"]
+            App1[🚀 App Server 1]
+            App2[🚀 App Server 2]
+            App3[🚀 App Server 3]
+        end
+
+        subgraph Cache["Cache / Lock Layer"]
+            Redis[(🔴 Redis<br/>대기열 · 분산 락 · 랭킹)]
+        end
+
+        subgraph Messaging["Messaging Layer"]
+            Kafka[📨 Kafka Cluster<br/>Broker × 3]
+        end
+
+        subgraph DB["Database Layer"]
+            Master[(🗄️ MySQL Primary<br/>예약 · 결제 · 잔액 쓰기)]
+            Replica[(🗄️ MySQL Replica<br/>콘서트 · 좌석 조회)]
+        end
+    end
+
+    User --> LB
+    LB --> App1 & App2 & App3
+
+    App1 & App2 & App3 --> Redis
+    App1 & App2 & App3 --> Kafka
+    App1 & App2 & App3 --> Master
+    App1 & App2 & App3 -.->|조회| Replica
+
+    Master -.->|복제| Replica
+```
+
+### 설계 포인트
+- **App 서버 무상태화**: 대기열 토큰·락·세션 정보를 모두 Redis에 두어 어느 인스턴스로 요청이 가도 동일하게 동작
+- **분산 락을 Redis로**: 인스턴스가 여러 대여도 좌석·결제 단위 락이 공유되도록 JVM 락 대신 Redis 사용
+- **이벤트로 후처리 분리**: 랭킹·알림·외부 전송을 예약/결제 트랜잭션에서 분리해 핵심 API 응답 시간에 영향이 없도록 함 (예약·결제 이벤트의 Kafka 전환은 진행 중)
+- **조회 분산(예정)**: 콘서트·좌석 조회는 Replica로 보내 Primary 부하를 줄이는 방향
+
+---
+
+## 3. 이벤트 흐름
+
+```mermaid
+graph LR
+    subgraph Producer["Kafka Producer (EventPublisher)"]
+        Bal[BalanceServiceWithEvents<br/>충전 · 차감]
+        Con[ConcertServiceWithEvents<br/>매진]
+    end
+
+    subgraph Topics["Kafka Topics"]
+        T3[balance-events]
+        T4[concert-events]
+        T1[reservation-events]
+        T2[payment-events]
+        T5[queue-events]
+    end
+
+    subgraph Consumers["Consumer Groups"]
+        Rank[ranking-service<br/>RankingKafkaEventListener]
+        Noti[notification-service<br/>NotificationEventListener]
+    end
+
+    Bal --> T3
+    Con --> T4
+
+    T3 --> Noti
+    T4 --> Rank
+    T1 -.-> Rank & Noti
+    T2 -.-> Rank & Noti
+    T5 -.-> Rank & Noti
+```
+
+- `EventPublisher`가 `KafkaTemplate`으로 발행 (비동기 `publishEvent` / 동기 `publishEventSync`)
+- 현재 Kafka로 실제 발행되는 토픽은 **`balance-events`, `concert-events`** 두 개
+- `reservation-events`, `payment-events`, `queue-events`는 **Consumer만 구현된 상태**(점선)이며, 예약 완료 이벤트는 아래 Spring 내부 이벤트로 처리 중
+
+### Spring 내부 이벤트 (트랜잭션 커밋 후 처리)
+
+Kafka와 별개로, 커밋 이후에만 실행되어야 하는 후처리는 `@TransactionalEventListener(phase = AFTER_COMMIT)`로 처리합니다.
+
+| 이벤트 | 리스너 | 처리 |
+|---|---|---|
+| `ReservationCompletedEvent` | `RankingEventListener` | 예약 속도·인기도 랭킹 갱신 |
+| `ConcertSoldOutEvent` | `RankingEventListener` | 매진 속도 랭킹 갱신 |
+| `ReservationCompletedEvent` | `DataTransferService` (`@Async`) | 외부 데이터 플랫폼 전송, 실패 시 `FailedDataTransfer` 저장 → `DataRetryService`가 10분 주기 재시도 |
+
+### Consumer Group 분리 이유
+- 같은 토픽을 **랭킹**과 **알림**이 각각 전부 받아야 하므로 그룹을 나눔
+- 한쪽 Consumer가 느리거나 장애가 나도 다른 쪽 처리에는 영향 없음
